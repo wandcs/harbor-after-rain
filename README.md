@@ -8,22 +8,61 @@
 - 离线版：[下载单文件 HTML](offline/harbor-after-rain-v1.4.9.html)，保存后用 Chrome / Edge 直接打开，无需服务端。
 - 当前版本：1.4.9。源码、构建脚本和测试均在本仓库。
 
+## 当前实现与导航
+
+工作区已实现完整联网房间流程、共用规则、带宽压缩、独立运行包和本地启停/回退工具。S1—S4 软件与自动化已有通过记录，S5 已完成对应本地工作；目标服务器、双设备与网络体验仍待验，O4 未关闭，未进入 S6 整体验收。上方公开试玩和带版本离线文件保持原离线玩法，本次联网改动尚未部署。
+
+- [文档导航](docs/README.md)：产品、技术、阶段计划、规范与历史实验。
+- [测试与诊断入口](tests/README.md)：分层逻辑、必要集成、浏览器及定向实验。
+- [GitHub 提交准备](docs/github-handoff.md)：Fork 与分支、源码与产物范围及待办。
+- [开发约定](docs/development-guide.md)、[发布与运行约定](docs/release-runbook.md)、[代理执行入口](AGENTS.md)。
+
 ## 运行
 
-需要 Node.js 20 或更新版本。
+使用 Node.js 24.x、npm 11.x，按锁文件安装；记录精确补丁版本。离线 HTML 直接运行不需要 Node.js。
 
 ```sh
 npm ci
+npm test
+npm run check
 npm run build
 npm start
 ```
 
-打开 http://127.0.0.1:4173 。也可以直接在现代浏览器打开 `dist/index.html`；所有运行所需代码与资源均在该文件中，声音在点击开始后启用。推荐桌面 Chrome / Edge，移动设备使用流畅画质。需要 WebGL 2。
+打开 http://127.0.0.1:4173 进入房间列表，可创建或加入团队竞技 / 中继争夺，选择 4v4、5v5、8v8、主武器及可选密码；机器人补齐空位。支持完整武器、配装、全场暂停和 3 秒恢复倒计时，失焦、后台与竖屏只中断本人输入；结算后返回列表并复用连接。声音在点击开始后启用，画面需要 WebGL 2。
+
+| 目的 | 命令或文件 |
+| --- | --- |
+| 完整构建 | `npm run build`，生成在线、离线、服务端及发布清单 |
+| 单目标构建 | `npm run build:online` / `build:offline` / `build:server`；完整交付仍需全量构建 |
+| 启动构建服务 | `npm start` → `node dist/server/main.js` |
+| 监听服务端源码 | `npm run dev`；使用已构建页面，浏览器源码变化后重新构建 |
+| 离线玩法 | 直接打开 `dist/offline/harbor-after-rain.html`；`dist/index.html` 为兼容入口 |
+| 离线静态预览 | `npm run preview:offline` |
+| 独立运行包 | `npm run package`；正式来源检查为 `npm run package:release` |
+
+服务配置为 `HOST`（默认 `127.0.0.1`）、`PORT`（`4173`）、`SNAPSHOT_HZ`（仅 `60` 或 `30`）、`MAX_ROOMS`（默认 `2`，范围 1–32）、`MAX_CONNECTIONS`（默认 `32`，范围 1–256）。输入、回溯和队列初值见 [server/config.js](server/config.js)。当前性能验收范围为单房最多 10 真人，或最多两房合计 10 真人以内；开发准入上限不是目标机容量保证。
+
+独立包输出到 `artifacts/releases/<运行编号>/`，包含 ZIP、外部 `release.json` 与 `SHA256SUMS`，已有交付文件不会覆盖。`package:release` 要求干净 Git 来源；默认本地包如实记录未提交状态。解包后执行 `npm ci --omit=dev --ignore-scripts --no-audit --no-fund`、`npm run verify`、`npm start`，运行外部依赖仅锁定的 `ws`。完整配置、清单和来源规则见[包内运行说明](packaging/RUNNING.md)与[发布约定](docs/release-runbook.md)，验证见[交付包记录](docs/release-package-results.md)及[本地演练](docs/local-runtime-results.md)。制作包不代表已部署或验收通过。
+
+## 目录与职责
+
+| 路径 | 内容 |
+| --- | --- |
+| `src/sim/` | 无设备副作用的共用规则、地图、碰撞、武器与对局计算 |
+| `src/protocol/` | 消息定义、版本、校验与编解码 |
+| `src/net/`、`src/client/` | 浏览器同步、预测、插值、输入、界面与会话入口 |
+| `src/` 根目录、`src/lab/` | 既有离线适配、渲染、声音及展示场，按真实链路逐步提取 |
+| `server/` | 权威房间、传输与同步；源码入口 `main.js`，可测试应用 `app.js` |
+| `tests/`、`scripts/` | 分层逻辑测试、集成驱动、工程检查与诊断工具 |
+| `docs/`、`packaging/` | 产品、技术、测试摘要、运行说明与包校验器 |
+| `offline/` | 已提交的带版本离线 HTML，保留原发布文件 |
+| `dist/`、`artifacts/`、`node_modules/` | 构建、原始证据与本机依赖，忽略提交 |
 
 ## 模式与操作
 
 - 启动页直接展示两张玩法卡，附交火／占点示意；点击对应入口即可开局，两种玩法共用部署设置。
-- 两种模式均为最多 3 分钟，暂停不计时；到时高分获胜，同分为平局，先达到目标可提前结束。
+- 在线与离线两种模式均为最多 3 分钟、目标 50、机器人常规难度，规则来自 `src/sim/match-rules.js`，不提供分数或难度选项。旧存储中的这两个选项会被清理，其余个人选择保留。暂停不计时；到时高分获胜，同分为平局，先达到目标可提前结束。
 - 团队竞技：4v4、5v5 或 8v8，率先达到目标击杀数获胜。
 - 中继争夺：进入标记区域占领中继，占领需要约 7 秒；控制后每秒 +1 分。双方同时在圈内时停止占领与计分，每 75 秒转移据点。墙体遮挡和出生保护中的角色不参与占领。
 - WASD 移动；鼠标转向；左键开火；按住右键举枪瞄准（步枪／冲锋枪／手枪），狙击右键切换倍率，刀右键重击。
@@ -31,7 +70,9 @@ npm start
 - B 配装（出生区即时更换，其他位置下次重生生效）；F 检视武器；Tab 计分板；Esc 暂停。
 - 触屏仅支持横屏：左拇指在左下区域按住滑动移动；右侧空白处滑动转向，按住右侧「开火」并拖动可边射击边瞄准。点「瞄准」「蹲」切换状态。浏览器不允许鼠标锁定时可按住鼠标拖动视角。
 
-## 本次改造
+## 离线版本历史
+
+下列条目保留对应离线版本的改造记录；当前规则与联网行为以上文及产品设计为准。
 
 ### 1.4.9 移动端仅支持横屏
 
@@ -174,26 +215,8 @@ await page.screenshot({ path: 'weapon-ads.png' });
 
 ## 工程与验证
 
-Three.js r186 + 原生 JavaScript/CSS + Web Audio；esbuild 打包成单 HTML。关键模块：`game.js` 对局，`render.js/env.js/atmosphere.js/weather.js` 画面，`guns.js/gun-detail.js/viewmodel.js/character.js` 模型与动作，`effects.js/impact-pools.js/audio.js` 命中与声音，`bots.js/tactics.js` 机器人，`relay-state.js/objective.js` 据点规则与表现，`physics.js` 碰撞导航。
+Three.js r186 + 原生 JavaScript/CSS + Web Audio；esbuild 输出单 HTML 与独立服务端。在线和离线共用计算，服务端不依赖 DOM 或 WebGL。基础检查、独立选择用例和浏览器准备统一见[测试入口](tests/README.md)；阶段覆盖及执行记录见[文档导航](docs/README.md)，当前缺口见[分阶段实施计划](docs/online-implementation-plan.md)。
 
-```sh
-npm test
-npm run test:browser
-npm run test:feedback
-npm run test:extended
-npm run test:arena
-```
+截图、原始日志、网络窗口和运行 ZIP 保存在本地忽略目录 `artifacts/`；文档中的该目录链接不会随源码自动出现在 GitHub。原始参考 HTML、截图基线和本机配置不上传；基础构建与运行不依赖它们，历史图像对照和回退检查需要对应归档。
 
-浏览器检查需要本机 Chrome 与已启动的预览服务器，包含加载、真实渲染、移动、暂停恢复、机器人交火和据点轮换；反馈检查使用真实鼠标／键盘操作验证瞄准与换弹，并通过真实弹道检查六类表面反馈和特效池上限。截图及日志输出到忽略目录 `artifacts/`。补充测试脚本检查移动布局、离线打开、连续重开和完整对局。程序化快进验证用于玩法稳定性，不等同于实时帧率测量。
-
-扩图检查 `test:arena` 验证实际玩家穿越设备舱、沿楼梯上下平台、走完侧路，并检查受击镜头、低血量、击杀/阵亡/复活反馈；使用 OfflineAudioContext 渲染音效以检查非静音、信号限幅与击杀层次。
-
-当前对局为本机玩家与机器人，不含真人联网、账号和云端存档。画质分档用于不同设备，实际性能取决于分辨率与硬件。
-
-构建输出保留 Three.js MIT 许可文本；原始仓库归属见上述链接。
-
-## 开发检查说明
-
-`npm test` 运行逻辑与几何测试。浏览器检查脚本使用 Playwright，当前默认 macOS 上的 Chrome 路径；跨平台运行时需调整脚本的 `executablePath`，部分脚本支持 `CHROME_PATH`。
-
-原作审计需要自行提供参考 HTML，图像对照需要对应历史基线。参考原文件、生成截图和本机部署配置不随源码上传，基础游戏的构建与运行不依赖这些文件。
+构建保留 Three.js MIT 许可文本；联网页面和服务器另带 fflate 0.8.3 的 MIT 许可，用于有界压缩块。原始项目与参考归属保留在本页开头。已公开版本仍为本机玩家与机器人玩法；当前联网实现不含账号和云端存档，真实画质性能取决于分辨率与硬件。

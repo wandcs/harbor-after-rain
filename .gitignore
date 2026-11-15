@@ -8,4 +8,15 @@ artifacts/
 
 # Local deployment and machine configuration
 .openai/
+.codex/
+.agents/
+.aws/
 .npmrc
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Python diagnostics cache
+__pycache__/
+*.pyc
