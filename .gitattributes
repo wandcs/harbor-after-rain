@@ -1,0 +1,12 @@
+# Keep source, tests, tools and documentation consistent across Git platforms.
+*.js text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+/src/*.html text eol=lf
+/.gitattributes text eol=lf
+/.gitignore text eol=lf
+
+# Published offline HTML keeps its existing checkout policy.

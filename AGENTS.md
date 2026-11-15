@@ -2,6 +2,8 @@
 
 本文件是仓库执行入口。详细规则见 [开发约定](docs/development-guide.md)；发布、运行与回退见 [发布与运行约定](docs/release-runbook.md)。用户指令与适用的全局规则优先，已有授权不重复索取。
 
+新电脑或新会话先读[换机与开发续接指南](docs/development-continuation.md)：其中保留 O4 的成功/失败尝试和停止原因；旧冻结参考源码与回退包不再是日常续接前置材料，O4 未通过结论及未来发布要求保持。
+
 ## 工作依据
 
 - 玩家行为以 [联网产品设计](docs/online-product-design.md) 为依据，网络机制与实验初值见 [技术方案](docs/online-technical-design.md)。旧评审保留历史，已替代内容不能覆盖当前决定。

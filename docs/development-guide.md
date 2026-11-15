@@ -135,6 +135,8 @@ build.mjs                 构建总入口
 
 依赖由 `package.json` 与 `package-lock.json` 一起管理。日常复现与构建使用 [`npm ci`](https://docs.npmjs.com/cli/v11/commands/npm-ci/)，不通过删除锁文件解决安装问题。新增依赖记录用途、许可与运行时或开发时归属；升级与功能改动尽量分开。
 
+源码、测试、工具、JSON、CSS、Markdown 与源码 HTML 统一 LF，由根目录 `.gitattributes` 固定检出策略，Prettier 显式设置 `endOfLine: 'lf'`，不依赖开发者全局 `core.autocrlf`。历史离线发布 HTML 沿用原策略，不顺带转换。新电脑的安装、Git 配置、验证及项目上下文见[续接指南](development-continuation.md)。
+
 安装、测试、构建和启动命令从仓库根目录执行。脚本通过自身位置定位资源，不依赖开发者的用户目录。跨平台浏览器测试统一支持 `CHROME_PATH`，缺少浏览器时提示如何配置；浏览器路径、测试服务地址与网络注入前置条件写入实际运行说明。
 
 ### 6.2 当前可用命令

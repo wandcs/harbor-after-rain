@@ -15,6 +15,8 @@ npm run build
 
 `npm test` 递归发现 `tests/` 下的 `.test.mjs`。`npm run check` 覆盖格式、静态规则、语法、循环与模块边界；实际格式治理列表见 [check.mjs](../scripts/check.mjs)，大型旧表现模块尚未统一格式化。构建不自动执行浏览器、真实网络或设备验收。
 
+新电脑按[续接指南](../docs/development-continuation.md)准备。Git 属性和 Prettier 均固定源码 LF；基础检查不需要 O4 旧冻结源码或回退包，不因迁机自动重跑历史弱网实验。
+
 ## 按责任选择逻辑用例
 
 | 责任 | 文件位置 | 独立入口 |
