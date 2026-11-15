@@ -1,3 +1,4 @@
+import { browserOptions, browserUrl } from './browser-config.mjs';
 // Chromium sends trusted, independently identified touchscreen contacts through
 // CDP. No test writes player.touch or invokes a touch-control event handler.
 import {chromium} from 'playwright-core';
@@ -8,11 +9,11 @@ import assert from 'node:assert/strict';
 
 const args=process.argv.slice(2),arg=(key,fallback)=>args.includes(key)?args[args.indexOf(key)+1]:fallback;
 const out=resolve(arg('--out','artifacts/v149'));
-const base=arg('--url','http://127.0.0.1:4173/');
+const base=arg('--url',browserUrl());
 const only=arg('--only','');
 await mkdir(out,{recursive:true});
 const report={version:1,transport:'Chrome CDP Input.dispatchTouchEvent',cases:[],errors:[],failures:[]};
-const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+const browser=await chromium.launch(browserOptions());
 // Portrait is an orientation gate, exercised separately by landscape-check.
 const sizes=[['wide',844,390],['compact',667,375],['tablet',1024,768]];
 const modes=[['tdm','#btnStartTdm'],['relay','#btnStartRelay']];

@@ -5,8 +5,26 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "start": "node scripts/serve.mjs",
-    "test": "node --test tests/*.test.mjs",
+    "build:online": "node build.mjs --target=online",
+    "build:offline": "node build.mjs --target=offline",
+    "build:server": "node build.mjs --target=server",
+    "package": "node scripts/package-release.mjs",
+    "package:release": "node scripts/package-release.mjs --release",
+    "start": "node dist/server/main.js",
+    "dev": "node --watch server/main.js",
+    "preview:offline": "node scripts/serve.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "test:sim": "node scripts/run-tests.mjs --layer=sim",
+    "test:protocol": "node scripts/run-tests.mjs --layer=protocol",
+    "test:server": "node scripts/run-tests.mjs --layer=server",
+    "test:client": "node scripts/run-tests.mjs --layer=client",
+    "test:tooling": "node scripts/run-tests.mjs --layer=tooling",
+    "test:s1:browser": "node scripts/s1-browser-check.mjs",
+    "test:s2:browser": "node scripts/s2-browser-check.mjs",
+    "test:s3": "node scripts/s3/run.mjs",
+    "test:s3:encoding": "node scripts/s3/run.mjs --case=S3-E1",
+    "test:preview": "node scripts/s1-preview-check.mjs",
+    "check": "node scripts/check.mjs",
     "test:browser": "node scripts/browser-check.mjs",
     "test:feedback": "node scripts/feedback-check.mjs",
     "test:extended": "node scripts/extended-check.mjs",
@@ -26,13 +44,30 @@
     "compare:arms": "node scripts/arm-compare.mjs --phase after",
     "report:arms": "node scripts/arm-review.mjs",
     "test:mobile": "node scripts/mobile-controls-check.mjs",
-    "test:landscape": "node scripts/mobile-landscape-check.mjs"
+    "test:landscape": "node scripts/mobile-landscape-check.mjs",
+    "test:s4:browser": "node scripts/s4-browser-check.mjs",
+    "test:s5": "node scripts/s5/run.mjs",
+    "test:s5:capacity": "node scripts/s5/run.mjs --case=S5-E1",
+    "test:s5:resources": "node scripts/s5/run.mjs --case=S5-E2"
   },
   "dependencies": {
     "esbuild": "^0.28.2",
-    "three": "^0.186.0"
+    "fflate": "0.8.3",
+    "three": "^0.186.0",
+    "ws": "8.23.0"
   },
   "devDependencies": {
-    "playwright-core": "^1.63.0"
+    "eslint": "10.14.0",
+    "playwright-core": "^1.63.0",
+    "prettier": "3.10.1"
+  },
+  "engines": {
+    "node": "24.x",
+    "npm": "11.x"
+  },
+  "overrides": {
+    "eslint": {
+      "minimatch": "11.0.1"
+    }
   }
 }

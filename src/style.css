@@ -610,3 +610,15 @@ button{color:var(--hud)}
   .mode-target{margin-top:12px;margin-bottom:11px;padding-top:10px}
   .briefing-tools{margin-top:13px}.match-rule{margin-top:13px}
 }
+
+/* Online rooms use the same manifest typography and harbour palette as the menu. */
+.online-rooms{padding:16px 0 22px;border-bottom:1px solid rgba(238,232,220,.25);margin-bottom:20px}
+.room-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.room-heading h2{font:600 20px var(--cn);letter-spacing:.1em}
+.room-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:14px 0;border-top:1px solid rgba(238,232,220,.12)}
+.room-row span{flex:1 1 230px;font-size:13px;line-height:1.7}
+.online-rooms button{padding:8px 16px;background:var(--accent);color:#14252a;border:1px solid var(--accent);cursor:pointer}
+.online-rooms button:disabled{opacity:.45;cursor:default}
+.online-rooms input,.online-sample .opts input:not([type=range]){max-width:100%;width:100%;padding:9px;background:#13252bdc;color:var(--hud);border:1px solid #60767a;box-sizing:border-box}
+.room-row input{width:140px}
+#roomNotice{color:#ffc48e;font-size:13px}

@@ -1,9 +1,10 @@
+import { browserOptions, browserUrl } from './browser-config.mjs';
 import { chromium } from 'playwright-core';
 import { mkdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
 await mkdir('artifacts', { recursive: true });
-const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
+const browser = await chromium.launch(browserOptions());
 const errors = [], warnings = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
@@ -12,7 +13,7 @@ try {
     if (msg.type() === 'error') errors.push(msg.text());
     if (msg.type() === 'warning') warnings.push(msg.text());
   });
-  await page.goto('http://127.0.0.1:4173/?nolock=1&q=high', { waitUntil: 'load' });
+  await page.goto(browserUrl('?nolock=1&q=high'), { waitUntil: 'load' });
   await page.waitForFunction(() => window.__game?.nav && window.__game?.hud?.el?.btnStartTdm, { timeout: 60000 });
   await page.waitForTimeout(1800);
   await page.screenshot({ path: 'artifacts/menu.png' });
@@ -43,10 +44,11 @@ try {
   assert.ok(simulated.actors.every(a => Number.isFinite(a.x) && Number.isFinite(a.z)), 'bot positions remain finite');
   assert.ok(simulated.actors.some(a => a.shots > 0), 'bots fire during simulated match');
   await page.evaluate(() => __game.quitToMenu());
-  await page.locator('.seg[data-k="goal"] button[data-v="100"]').click();
   await page.locator('#btnStartRelay').click();
   const relay = await page.evaluate(() => {
     const g = __game;
+    // Keep this rotation fixture running past 75s; public matches use 50 points.
+    g.goal = 100;
     g.fastForward(90, 1 / 30);
     return { index: g.objective.rules.index, score: { ...g.score }, active: g.objective.active,
       positions: g.actors.map(a => [a.pos.x, a.pos.z]), owner: g.objective.owner };

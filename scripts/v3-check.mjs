@@ -1,16 +1,17 @@
+import { browserOptions, browserUrl } from './browser-config.mjs';
 // End-to-end checks for the expanded arena and the actual combat-feedback path.
 import { chromium } from 'playwright-core';
 import { mkdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
 await mkdir('artifacts', {recursive:true});
-const browser = await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+const browser = await chromium.launch(browserOptions());
 const result={},errors=[];
 try {
   const page=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1});
   page.on('pageerror',e=>errors.push(e.stack||e.message));
   page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
-  await page.goto('http://127.0.0.1:4173/?nolock=1&q=high');
+  await page.goto(browserUrl('?nolock=1&q=high'));
   await page.waitForFunction(()=>window.__game?.nav,{},{timeout:90000});
   await page.locator('#btnStartTdm').click();
   result.map=await page.evaluate(()=>{

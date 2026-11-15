@@ -1,3 +1,4 @@
+import { relayCounts, relayPoints } from './sim/modes/relay.js';
 import * as THREE from 'three';
 import { RelayState } from './relay-state.js';
 
@@ -27,11 +28,7 @@ export class RelayObjective {
     game.renderer.scene.add(this.root); this.root.visible = false;
     const locations = game.map?.relayPoints || [[0, -6.8], [0, 6.8], [-2.5, 0]].map(([x, z], i) => ({ x, z, y: 0, label: NAMES[i] }));
     this.labels = locations.map(p => p.label);
-    this.points = locations.map(({ x, z, y = 0 }) => {
-      const k = game.nav.nearestFree(game.nav.idx(x,z));
-      const p = k >= 0 ? game.nav.center(k) : [x,z];
-      return new THREE.Vector3(p[0], game.nav.heightAt?.(p[0], p[1]) ?? y, p[1]);
-    });
+    this.points = relayPoints(game);
   }
   reset(active) {
     this.active = active; this.rules.reset(); this.root.visible = active;
@@ -42,15 +39,7 @@ export class RelayObjective {
   get contested() { return this.rules.contested; }
   update(dt) {
     if (!this.active) return;
-    const counts = { BL: 0, GR: 0 };
-    for (const a of this.game.actors) {
-      if (!a.alive || a.protectT > 0 || Math.abs(a.pos.y - this.position.y) > 0.85) continue;
-      if (Math.hypot(a.pos.x - this.position.x, a.pos.z - this.position.z) > this.radius) continue;
-      // Walls and stacked cargo prevent capturing through cover from a different lane.
-      const dx = this.position.x - a.pos.x, dy = this.position.y - a.pos.y, dz = this.position.z - a.pos.z, len = Math.hypot(dx, dy, dz);
-      if (len > 0.2 && this.game.world.raycast(a.pos.x, a.pos.y + 0.8, a.pos.z, dx / len, dy / len, dz / len, len - 0.15, 'sight')) continue;
-      counts[a.team]++;
-    }
+    const counts = relayCounts(this.game, this.position);
     const result = this.rules.update(dt, counts);
     if (result.rotated) {
       this.position.copy(this.points[this.rules.index % this.points.length]);

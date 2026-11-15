@@ -1,12 +1,17 @@
 // Procedural prop builders shared by gameplay batches and the isolated gallery.
 // Geometry callbacks retain the map's material batching and collision policy.
 import * as THREE from 'three';
+import {propCollider} from './sim/maps/prop-colliders.js';
 import {CONTAINER_PROFILE,createCorrugatedPanel,createCornerCasting} from './prop-geometry.js';
-const CH=2.59,CW=2.44,L20=6.06,L40=12.19;
+import {CH,CW,L20,L40} from './sim/maps/dimensions.js';
 // A small CPU template; the map batch copies its vertices, so it never owns GPU buffers.
 const castingGeometry=createCornerCasting();
 const hardwareCylinder=new THREE.CylinderGeometry(1,1,1,6,1,true);
 export function createPropBuilders({T,box,solid,foot,geom,rod,rnd,batch,matDefs,lampSpots,cylG,cylG8,sphG,torG,geometryDetail=true}) {
+  const collision = (kind,args) => {
+    const c = propCollider(kind,args,T.crates.map(crate => crate.kind));
+    if (c) { const {x,y,z,sx,sy,sz,yaw,...props} = c; solid(x,y,z,sx,sy,sz,yaw,props); }
+  };
   function corrugatedWall(cx,cy,cz,sx,sy,sz,yaw,faces,uvBounds={}) {
     if(!geometryDetail){box(cx,cy,cz,sx,sy,sz,yaw,faces);return;}
     const remaining={...faces};
@@ -94,14 +99,13 @@ export function createPropBuilders({T,box,solid,foot,geom,rod,rnd,batch,matDefs,
       // A physical gasket makes the meeting edge of the two leaves readable.
       local(a*(L/2+.005),CH/2,0,.012,CH-.25,.014,'black');
     }
-    if (o.collide !== false) solid(x, cy, z, L, CH, CW, yaw, { mat: 'metal', surface: 'container', tag: 'container' });
+    collision('container',[x,z,yawDeg,len,colorIdx,level,o]);
     if (level === 0) foot(x, z, L, CW, yaw);
   }
   function crate(x, z, sx, sy, sz, idx, y = 0, yawDeg = 0) {
     const yaw = yawDeg * Math.PI / 180;
     box(x, y + sy / 2, z, sx, sy, sz, yaw, `crate${idx}`);
-    const wood = T.crates[idx].kind === 'wood';
-    solid(x, y + sy / 2, z, sx, sy, sz, yaw, { mat: wood ? 'wood' : 'metal', bullet: wood ? 'pen' : 'block', surface: wood ? 'wood' : 'metal' });
+    collision('crate',[x,z,sx,sy,sz,idx,y,yawDeg]);
     if (y < 0.05) foot(x, z, sx, sz, yaw, 0.45);
   }
   function barrel(x, z, colorKey = 'red', y = 0) {
@@ -110,7 +114,7 @@ export function createPropBuilders({T,box,solid,foot,geom,rod,rnd,batch,matDefs,
     for (const hy of [0.25, 0.65]) geom('darkSteel', cylG, x, y + hy, z, 0, 0, 0, 0.305, 0.03, 0.305);
     for (const hy of [.025,.875]) geom('darkSteel', cylG, x,y+hy,z,0,0,0,.308,.025,.308);
     geom('steel', cylG8, x+.13,y+.918,z,0,0,0,.038,.018,.038);
-    solid(x, y + 0.45, z, 0.56, 0.9, 0.56, 0, { mat: 'metal', bullet: 'pen' });
+    collision('barrel',[x,z,colorKey,y]);
     foot(x, z, 0.6, 0.6, 0, 0.4);
   }
   // 栏杆：从 (x0,z0) 到 (x1,z1)，底部高度 y
@@ -124,7 +128,7 @@ export function createPropBuilders({T,box,solid,foot,geom,rod,rnd,batch,matDefs,
       geom(key, cylG8, x0 + dx * t, y + h / 2, z0 + dz * t, 0, 0, 0, 0.03, h, 0.03);
     }
     for (const hh of [h, h * 0.5, 0.08]) rod(key, x0, y + hh, z0, x1, y + hh, z1, hh === 0.08 ? 0.02 : 0.028);
-    if (collide) solid(mx, y + 0.8, mz, L, 1.6, 0.1, yaw, { bullet: 'pass', sight: false, mat: 'metal' });
+    collision('railing',[x0,z0,x1,z1,y,key,h,collide]);
   }
   // 铁丝网面板
   function fence(x0, z0, x1, z1, y0, y1, frameKey = 'railYellow', collide = true) {
@@ -135,7 +139,7 @@ export function createPropBuilders({T,box,solid,foot,geom,rod,rnd,batch,matDefs,
     geom(frameKey, cylG8, x1, (y0 + y1) / 2, z1, 0, 0, 0, 0.04, h, 0.04);
     rod(frameKey, x0, y1, z0, x1, y1, z1, 0.035);
     rod(frameKey, x0, y0 + 0.02, z0, x1, y0 + 0.02, z1, 0.035);
-    if (collide) solid(mx, (y0 + y1) / 2, mz, L, h, 0.08, yaw, { bullet: 'pass', sight: false, mat: 'mesh' });
+    collision('fence',[x0,z0,x1,z1,y0,y1,frameKey,collide]);
   }
   function lamp(x, y, z, pointLight = false) {
     geom('lamp', sphG, x, y, z, 0, 0, 0, 0.09, 0.09, 0.09);

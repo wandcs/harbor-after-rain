@@ -33,7 +33,7 @@ test('portrait sync runs before simulation and freezes queued actions immediatel
 });
 test('immediate loadout change exits previous sniper scope', () => {
   const g=Object.create(Game.prototype);
-  g.time=1;g.opts={};g.hud={saveOpts(){},slots(){},toast(){}};g.vm={equip(){}};
+  g.time=1;g.opts={};g.random=()=>.5;g.hud={saveOpts(){},slots(){},toast(){}};g.vm={equip(){}};
   g.map={spawnBounds:{BL:{maxX:-28.3},GR:{minX:28.3}}};
   g.player={alive:true,team:'BL',pos:{x:-33},scoped:2,scopeReady:true,reScope:5,inv:[new WeaponState('awm')],soldier:{setWeapon(){}}};
   g.chooseLoadout('m4a1');

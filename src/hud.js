@@ -1,7 +1,9 @@
 // HUD 与菜单（DOM）
 import { WEAPONS, PRIMARIES } from './weapons.js';
+import { MATCH_RULES } from './sim/match-rules.js';
 
 const TEAM_CN = { BL: '潜伏者', GR: '保卫者' };
+const MATCH_TIME = `${Math.floor(MATCH_RULES.durationSeconds / 60)}:${String(MATCH_RULES.durationSeconds % 60).padStart(2, '0')}`;
 const $ = (s, r = document) => r.querySelector(s);
 export const NAME_COLORS = Object.freeze({ ally: '#8cc8ff', enemy: '#ff6262' });
 export const nameClass = (team, myTeam) => team === myTeam ? 'name-ally' : 'name-enemy';
@@ -58,9 +60,12 @@ export class HUD {
     const touch = matchMedia('(pointer:coarse)').matches || new URLSearchParams(location.search).has('touch');
     this.touchUI = touch;
     this.root.classList.toggle('touch-ui', touch);
-    this.opts = { mode: 'tdm', team: 'BL', primary: 'm4a1', size: 5, diff: 'normal', goal: 50, tod: 'dusk', quality: touch ? 'low' : 'high', sens: 1.0, fov: 78, vol: 0.8 };
+    this.opts = { mode: 'tdm', team: 'BL', primary: 'm4a1', size: 5, tod: 'dusk', quality: touch ? 'low' : 'high', sens: 1.0, fov: 78, vol: 0.8 };
     try { Object.assign(this.opts, JSON.parse(localStorage.getItem('harbor_after_rain_opts_v1') || '{}')); } catch (e) { /* 忽略 */ }
+    // Retire old personal overrides; both entries use the shared product rules.
+    delete this.opts.goal; delete this.opts.diff;
     if (!['tdm', 'relay'].includes(this.opts.mode)) this.opts.mode = 'tdm';
+    this.saveOpts();
     this.buildMenu();
   }
   saveOpts() { try { localStorage.setItem('harbor_after_rain_opts_v1', JSON.stringify(this.opts)); } catch (e) { /* 忽略 */ } }
@@ -79,7 +84,6 @@ export class HUD {
           b.classList.add('on'); b.setAttribute('aria-pressed', 'true');
           o[k] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v;
           this.saveOpts();
-          if (k === 'goal') this.syncMode();
           this.g.onOption?.(k, o[k]);
           this.g.audio?.playUI('click');
         });
@@ -120,10 +124,9 @@ export class HUD {
     for (const c of this.root.querySelectorAll('#loadCards .card')) c.querySelector('img').src = icons[c.dataset.w] || '';
   }
   syncMode() {
-    const goal = Number(this.opts.goal) || 50;
+    const goal = MATCH_RULES.scoreLimit;
     this.el.tdmTarget.textContent = goal;
     this.el.relayTarget.textContent = goal;
-    this.el.goalLabel.textContent = '提前结束目标';
     this.el.modeHint.textContent = `团队竞技 ${goal} 次击杀 · 中继争夺 ${goal} 积分`;
   }
   syncControls() {
@@ -423,7 +426,7 @@ const TEMPLATE = `
 <div id="hud" class="hidden">
   <div id="score">
     <div class="team bl" id="tBL"><span class="nm">潜伏者</span><span class="pts" id="sBL">0</span></div>
-    <div class="mid"><div class="time" id="sTime">3:00</div><div class="goal" id="sGoal"></div></div>
+    <div class="mid"><div class="time" id="sTime">${MATCH_TIME}</div><div class="goal" id="sGoal"></div></div>
     <div class="team gr" id="tGR"><span class="pts" id="sGR">0</span><span class="nm">保卫者</span></div>
   </div>
   <div id="radarWrap"><canvas id="radar"></canvas><div class="lbl">运输船</div></div>
@@ -458,12 +461,12 @@ const TEMPLATE = `
     <div class="title">
       <div class="logo"><i></i> AFTER THE RAIN, INTO THE FIRE.</div>
       <div class="brand-line"><h1>运输船</h1><div class="en">暮雨行动</div></div>
-      <p class="premise">穿行雨后甲板，与小队一起推进。选择玩法，即刻开始一场三分钟的行动。</p>
+      <p class="premise">穿行雨后甲板，与小队一起推进。选择玩法，即刻开始一场 ${MATCH_RULES.durationSeconds / 60} 分钟的行动。</p>
     </div>
     <div class="note touch-instructions hidden" id="touchNote"><b>双拇指操作</b> 左侧拖动移动，右侧滑动转向；按住开火并拖动瞄准。<span>移动端仅支持横屏。</span></div>
     <div class="mode-grid" aria-label="选择玩法并开始行动">
       <article class="mode-card mode-tdm" aria-labelledby="tdmTitle">
-        <div class="mode-meta"><span>01 / TEAM DEATHMATCH</span><b>3 分钟</b></div>
+        <div class="mode-meta"><span>01 / TEAM DEATHMATCH</span><b>${MATCH_RULES.durationSeconds / 60} 分钟</b></div>
         <svg class="mode-diagram" viewBox="0 0 320 116" role="img" aria-label="两支小队利用货箱掩体交战，击败对手累计击杀">
           <g class="diagram-deck"><path d="M24 15H296V101H24Z"/><path d="M24 58H296" stroke-dasharray="3 6"/><path d="M55 15V101M265 15V101"/></g>
           <g class="diagram-cover"><path d="M91 28H130V46H91ZM91 70H130V88H91ZM190 28H229V46H190ZM190 70H229V88H190Z"/><path d="M101 29V45M111 29V45M121 29V45M101 71V87M111 71V87M121 71V87M200 29V45M210 29V45M220 29V45M200 71V87M210 71V87M220 71V87"/></g>
@@ -472,11 +475,11 @@ const TEMPLATE = `
           <g class="diagram-focus"><path d="M155 51L165 65M165 51L155 65"/><circle cx="160" cy="58" r="16" stroke-dasharray="2 5"/></g>
         </svg>
         <div class="mode-copy"><h2 id="tdmTitle">团队竞技</h2><p>利用掩体与队友推进，击败对手，为队伍累计击杀。</p></div>
-        <div class="mode-target"><span>提前获胜</span><b><strong id="tdmTarget">50</strong> 次击杀</b></div>
+        <div class="mode-target"><span>提前获胜</span><b><strong id="tdmTarget">${MATCH_RULES.scoreLimit}</strong> 次击杀</b></div>
         <button class="mode-start" id="btnStartTdm" data-start-mode="tdm"><span>进入团队竞技</span><span aria-hidden="true">↗</span></button>
       </article>
       <article class="mode-card mode-relay" aria-labelledby="relayTitle">
-        <div class="mode-meta"><span>02 / RELAY CONTROL</span><b>3 分钟</b></div>
+        <div class="mode-meta"><span>02 / RELAY CONTROL</span><b>${MATCH_RULES.durationSeconds / 60} 分钟</b></div>
         <svg class="mode-diagram" viewBox="0 0 320 116" role="img" aria-label="小队前往当前中继据点，控制区域持续得分，据点随后轮换">
           <g class="diagram-deck"><path d="M24 15H296V101H24Z"/><path d="M55 15V101M265 15V101"/></g>
           <g class="diagram-cover"><path d="M87 27H124V45H87ZM196 71H233V89H196Z"/><path d="M96 28V44M106 28V44M116 28V44M205 72V88M215 72V88M225 72V88"/></g>
@@ -487,11 +490,11 @@ const TEMPLATE = `
           <g class="diagram-focus"><circle cx="160" cy="58" r="26"/><circle cx="160" cy="58" r="18" stroke-dasharray="2 4"/><path d="M160 46L170 58 160 70 150 58Z"/><path d="M179 23A40 40 0 0 1 199 45M193 42L199 45 202 38"/></g>
         </svg>
         <div class="mode-copy"><h2 id="relayTitle">中继争夺</h2><p>占领中继区持续得分；每 75 秒轮换据点，争夺时暂停计分。</p></div>
-        <div class="mode-target"><span>提前获胜</span><b><strong id="relayTarget">50</strong> 积分</b></div>
+        <div class="mode-target"><span>提前获胜</span><b><strong id="relayTarget">${MATCH_RULES.scoreLimit}</strong> 积分</b></div>
         <button class="mode-start" id="btnStartRelay" data-start-mode="relay"><span>进入中继争夺</span><span aria-hidden="true">↗</span></button>
       </article>
     </div>
-    <p class="match-rule"><b>03:00</b><span>3 分钟到时，高分队伍获胜；先达到目标可提前结束。同分则平局。</span></p>
+    <p class="match-rule"><b>${MATCH_TIME.padStart(5, '0')}</b><span>${MATCH_RULES.durationSeconds / 60} 分钟到时，高分队伍获胜；先达到目标可提前结束。同分则平局。机器人难度为常规。</span></p>
     <div class="briefing-tools">
       <details class="controls"><summary>操作指南 <span>⌨</span></summary><div class="keys">
         <kbd>W A S D</kbd><span>移动　<kbd>Shift</kbd> 静步　<kbd>空格</kbd> 跳跃　<kbd>C</kbd> 蹲下</span>
@@ -507,12 +510,8 @@ const TEMPLATE = `
       <div class="deploy-heading"><span>共享部署</span><b>LOADOUT / BOTH MODES</b></div>
       <div class="opt"><div class="lab">选择阵营</div><div class="seg team" data-k="team"><button data-v="BL">潜伏者<small>BLACK LIST</small></button><button data-v="GR">保卫者<small>GLOBAL RISK</small></button></div></div>
       <div class="opt"><div class="lab">主武器</div><div class="seg" data-k="primary"><button data-v="ak47">AK-47</button><button data-v="m4a1">M4A1</button><button data-v="awm">AWM</button><button data-v="mp5">MP5</button></div></div>
-      <div class="row2">
-        <div class="opt"><div class="lab">小队规模</div><div class="seg" data-k="size"><button data-v="4">4v4</button><button data-v="5">5v5</button><button data-v="8">8v8</button></div></div>
-        <div class="opt"><div class="lab" id="goalLabel">提前结束目标</div><div class="seg" data-k="goal"><button data-v="30">30</button><button data-v="50">50</button><button data-v="100">100</button></div></div>
-      </div>
+      <div class="opt"><div class="lab">小队规模</div><div class="seg" data-k="size"><button data-v="4">4v4</button><button data-v="5">5v5</button><button data-v="8">8v8</button></div></div>
       <p id="modeHint" class="mode-hint"></p>
-      <div class="opt"><div class="lab">对手难度</div><div class="seg" data-k="diff"><button data-v="easy">新兵</button><button data-v="normal">常规</button><button data-v="hard">老练</button><button data-v="hell">精锐</button></div></div>
       <details class="advanced"><summary>画面与操作设置 <span>＋</span></summary><div class="advanced-body">
         <div class="row2">
           <div class="opt"><div class="lab">光照</div><div class="seg" data-k="tod"><button data-v="day">阴晴</button><button data-v="dusk">暮光</button></div></div>

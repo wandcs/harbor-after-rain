@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { Actor } from './actor.js';
 import { DamageResponse } from './combat-feedback.js';
+import { playerForward, updatePlayerPose } from './sim/player-pose.js';
 
 export class Player extends Actor {
   constructor(game, o) {
@@ -18,10 +19,7 @@ export class Player extends Actor {
     this.touch = { mx: 0, mz: 0, fire: false, firePressed: false, jump: false, crouch: false, aim: false };
   }
   forward(out) {
-    // Match the camera's recoil pose so the aimed sight and bullet direction agree.
-    const kick = this.damageResponse?.offset;
-    const p = this.pitch + this.punchP * 0.75 + this.aimPunch + (kick?.pitch || 0), y = this.yaw + this.punchY * 0.75 + (kick?.yaw || 0);
-    return out.set(-Math.sin(y) * Math.cos(p), Math.sin(p), -Math.cos(y) * Math.cos(p));
+    return playerForward(this,out);
   }
   shotOrigin(out) {
     // weaponUpdate may have recovered recoil or changed scope since movement.
@@ -112,7 +110,7 @@ export class Player extends Actor {
   }
   updateCamera(dt) {
     const g = this.game, cam = g.renderer.camera;
-    const kick = this.damageResponse.update(dt);
+    const kick = this.alive ? null : this.damageResponse.update(dt);
     if (!this.alive) {
       // 死亡镜头：抬高并看向击杀者
       const dc = this.deathCam;
@@ -130,23 +128,8 @@ export class Player extends Actor {
       cam.fov += (g.opts.fov - cam.fov) * Math.min(1, dt * 8); cam.updateProjectionMatrix();
       return;
     }
-    // 晃动
-    const sp = this.onGround ? this.speed : 0;
-    this.bobT += dt * (sp > 0.5 ? 6 + sp * 0.9 : 0);
-    const bobK = Math.min(1, sp / 6) * (this.scoped ? 0.2 : 1 - 0.82 * (this.ads || 0));
-    const by = Math.abs(Math.sin(this.bobT)) * 0.028 * bobK, bx = Math.cos(this.bobT) * 0.012 * bobK;
-    if (dt > 0 && this.landed && this.landSpeed > 3) this.land = Math.min(0.14, this.landSpeed * 0.012);
-    this.land *= Math.exp(-dt * 7);
-    const shake = g.fx.shake * 0.06;
-    if (dt > 0) this.explosionOffset.set((Math.random() - .5) * shake, (Math.random() - .5) * shake);
-    this.eye(cam.position);
-    cam.position.y += by - this.land + this.explosionOffset.y + kick.y;
-    const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
-    cam.position.x += cy * (bx + kick.x) + this.explosionOffset.x;
-    cam.position.z += -sy * (bx + kick.x);
-    this.camRoll += ((this.keys.has('KeyA') ? 0.008 : 0) - (this.keys.has('KeyD') ? 0.008 : 0) - this.camRoll) * Math.min(1, dt * 6);
-    cam.rotation.order = 'YXZ';
-    cam.rotation.set(this.pitch + this.punchP * 0.75 + this.aimPunch + kick.pitch, this.yaw + this.punchY * 0.75 + kick.yaw, this.camRoll + kick.roll);
+    const pose = updatePlayerPose(this,dt,{shake:g.fx.shake,random:this.game.random || Math.random,left:this.keys.has('KeyA'),right:this.keys.has('KeyD')});
+    cam.position.copy(pose.position); cam.rotation.copy(pose.rotation);
     // A modest optical change for iron / reflex sights; sniper keeps two zoom levels.
     const w = this.weapon;
     let fov = g.opts.fov;

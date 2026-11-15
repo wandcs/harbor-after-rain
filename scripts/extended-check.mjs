@@ -1,9 +1,10 @@
+import { browserOptions, browserUrl } from './browser-config.mjs';
 import { chromium } from 'playwright-core';
 import { writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
+const browser = await chromium.launch(browserOptions());
 const errors = [], results = {};
 const watch = page => {
   page.on('pageerror', e => errors.push(e.message));
@@ -11,7 +12,7 @@ const watch = page => {
 };
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); watch(page);
-  await page.goto('http://127.0.0.1:4173/?nolock=1&q=medium');
+  await page.goto(browserUrl('?nolock=1&q=medium'));
   await page.waitForFunction(() => window.__game, { timeout: 60000 });
   results.menuWeaponHidden = await page.evaluate(() => !__game.vm.rig.visible);
   assert.equal(results.menuWeaponHidden, true);
@@ -47,7 +48,7 @@ try {
 
   const context = await browser.newContext({ viewport:{width:390,height:844}, isMobile:true, hasTouch:true, deviceScaleFactor:1 });
   const mobile = await context.newPage(); watch(mobile);
-  await mobile.goto('http://127.0.0.1:4173/?q=low&touch=1');
+  await mobile.goto(browserUrl('?q=low&touch=1'));
   await mobile.waitForFunction(()=>window.__game,{timeout:60000});
   await mobile.locator('#btnStartTdm').scrollIntoViewIfNeeded();
   await mobile.screenshot({ path:'artifacts/mobile-menu.png' });

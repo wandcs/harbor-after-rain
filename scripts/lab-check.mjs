@@ -1,3 +1,4 @@
+import { browserOptions, browserUrl } from './browser-config.mjs';
 import {chromium} from 'playwright-core';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -5,9 +6,9 @@ import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 import {LAB_IDS} from '../src/lab/config.js';
 
-const base=process.env.LAB_BASE||'http://127.0.0.1:4173/',out='artifacts/lab';
+const base=process.env.LAB_BASE||browserUrl(),out='artifacts/lab';
 await fs.mkdir(out,{recursive:true});
-const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+const browser=await chromium.launch(browserOptions());
 const report={schemaVersion:1,modules:[],errors:[],network:[]};
 try{
   const page=await browser.newPage({viewport:{width:1600,height:1000},deviceScaleFactor:1});

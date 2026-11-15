@@ -1,3 +1,4 @@
+import { browserOptions, browserUrl } from './browser-config.mjs';
 // Orientation gates use real viewport changes and trusted CDP contacts. The
 // separate fullscreen/lock stubs prove call routing and failure handling only;
 // they do not claim that a physical browser successfully locked its screen.
@@ -8,10 +9,10 @@ import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 
 const args=process.argv.slice(2),arg=(key,fallback)=>args.includes(key)?args[args.indexOf(key)+1]:fallback;
-const out=resolve(arg('--out','artifacts/v149')),base=arg('--url','http://127.0.0.1:4173/');
+const out=resolve(arg('--out','artifacts/v149')),base=arg('--url',browserUrl());
 await mkdir(out,{recursive:true});
 const report={version:1,nativeOrientationLockVerified:false,apiTests:'explicitly mocked call routing and failure handling',cases:[],errors:[],failures:[]};
-const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+const browser=await chromium.launch(browserOptions());
 const sleep=(page,ms=100)=>page.waitForTimeout(ms);
 const centre=r=>({x:r.x+r.width/2,y:r.y+r.height/2});
 const state=page=>page.evaluate(()=>{

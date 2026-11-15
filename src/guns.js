@@ -1,5 +1,6 @@
 // 枪械模型：程序化构建。局部坐标：枪口朝 -Z，上 +Y，右 +X，原点在握把上方
 import * as THREE from 'three';
+import { WEAPON_ANCHORS } from './sim/weapon-anchors.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { fbm, normalFromHeight } from './textures.js';
@@ -230,6 +231,11 @@ const builders = {
 export function buildGun(id, { firstPerson = false } = {}) {
   const m = gunMaterials();
   const g = detailGun(builders[id](m), id, m);
+  g.updateMatrixWorld(true);
+  for (const [name, point] of Object.entries(WEAPON_ANCHORS[id])) {
+    const anchor = g.getObjectByName(name);
+    if (anchor) anchor.position.copy(anchor.parent.worldToLocal(new THREE.Vector3(...point)));
+  }
   batchWeapon(g);
   if (firstPerson) cloneViewMaterials(g);
   g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });

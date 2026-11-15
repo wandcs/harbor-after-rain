@@ -1,16 +1,17 @@
+import { browserOptions, browserUrl } from './browser-config.mjs';
 // Real-render regression for sight alignment, reload state, surface response and weather.
 import { chromium } from 'playwright-core';
 import { mkdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
 await mkdir('artifacts', { recursive: true });
-const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
+const browser = await chromium.launch(browserOptions());
 const errors = [], result = {};
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   page.on('pageerror', e => errors.push(e.stack || e.message));
   page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
-  await page.goto('http://127.0.0.1:4173/?nolock=1&q=high');
+  await page.goto(browserUrl('?nolock=1&q=high'));
   await page.waitForFunction(() => window.__game?.nav, { timeout: 90000 });
   await page.locator('#btnStartTdm').click();
   await page.evaluate(() => {

@@ -1,3 +1,4 @@
+import * as combatActions from './sim/combat-actions.js';
 // 对局主控
 import * as THREE from 'three';
 import { Renderer } from './render.js';
@@ -16,10 +17,14 @@ import { Bot, BOT_NAMES } from './bots.js';
 import { TouchControls } from './touch.js';
 import { MobileLandscape } from './mobile-landscape.js';
 import { RelayObjective } from './objective.js';
+import { traceShot } from './sim/ballistics.js';
+import { applyDamageState, applyDeathState } from './sim/damage.js';
+import { createRandom } from './sim/random.js';
+import { MATCH_RULES } from './sim/match-rules.js';
 import { lowHealthAmount } from './combat-feedback.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
-const MATCH_DURATION = 180;
+const MATCH_DURATION = MATCH_RULES.durationSeconds;
 const MULTI = ['', '', 'DOUBLE KILL', 'TRIPLE KILL', 'MULTI KILL', 'ULTRA KILL', 'RAMPAGE', 'UNSTOPPABLE', 'GODLIKE'];
 const MULTI_CN = ['', '', '双杀', '三杀', '四杀', '五杀', '六杀！', '无人能挡', '超神'];
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3();
@@ -28,6 +33,7 @@ const _tagHead = new THREE.Vector3(), _tagDir = new THREE.Vector3();
 export class Game {
   constructor() {
     this.time = 0; this.frame = 0;
+    this.random = createRandom((Math.random() * 0x100000000) >>> 0);
     this.playing = false; this.paused = false; this.locked = false;
     this.actors = []; this.nades = []; this.timers = []; this.tags = [];
     this.score = { BL: 0, GR: 0 };
@@ -92,12 +98,12 @@ export class Game {
     document.addEventListener('keydown', (event) => {
       if (event.code !== 'Escape' || !this.playing || this.ended) return;
       if (this.inLoadout) { this.closeLoadout(); return; }
-      if (this.paused) this.resume(); else this.pause();
+      if (this.paused) this.resume(); else this.pause('user');
     });
-    window.addEventListener('blur', () => { if (this.playing && !this.paused) this.pause(); });
+    window.addEventListener('blur', () => { if (this.playing && !this.paused) this.pause('input-interruption'); });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) return;
-      if (this.playing && !this.paused && !this.ended) this.pause();
+      if (this.playing && !this.paused && !this.ended) this.pause('input-interruption');
       else this.clearInput();
     });
     this.last = performance.now();
@@ -165,7 +171,7 @@ export class Game {
     this.actors = []; this.nades = []; this.tags = []; this.timers = [];
     this.score = { BL: 0, GR: 0 };
     this.mode = o.mode === 'relay' ? 'relay' : 'tdm';
-    this.goal = Number(o.goal) || 50; this.timeLeft = MATCH_DURATION;
+    this.goal = MATCH_RULES.scoreLimit; this.timeLeft = MATCH_DURATION;
     this.time = 0; this.inLoadout = false; this.killedBy = ''; this.dmgFlash = 0; this.lowHealthFX = 0;
     this.aimTarget = null;
     for (const item of this.hud.feedItems) item.el.remove();
@@ -190,7 +196,7 @@ export class Game {
     for (const team of [my, other]) {
       const count = team === my ? N - 1 : N;
       for (let i = 0; i < count; i++) {
-        const b = new Bot(this, { id: id++, name: names.pop() || 'Bot' + id, team, diff: o.diff });
+        const b = new Bot(this, { id: id++, name: names.pop() || 'Bot' + id, team, diff: MATCH_RULES.botDifficulty });
         b.primary = prim(team, team === my ? i + 1 : i);
         this.actors.push(b);
         this.addTag(b);
@@ -259,7 +265,7 @@ export class Game {
     const pts = this.map.spawns[a.team];
     let best = null, bestScore = -1e9;
     for (const p of pts) {
-      let sc = Math.random() * 3;
+      let sc = this.random() * 3;
       for (const o of this.actors) {
         if (!o.alive || o === a) continue;
         const d = Math.hypot(o.pos.x - p.x, o.pos.z - p.z);
@@ -307,7 +313,7 @@ export class Game {
     if (this.locked) {
       if (this.paused) this.resume(true);
     } else if (this.playing && !this.ended && !this.inLoadout && !this.qs.has('nolock')) {
-      this.pause();
+      this.pause('input-interruption');
     }
   }
   pause() {
@@ -374,7 +380,7 @@ export class Game {
     const sb = this.map.spawnBounds;
     const inSpawn = p.alive && (p.team === 'BL' ? p.pos.x < sb.BL.maxX : p.pos.x > sb.GR.minX);
     if (inSpawn) {
-      p.primary = id; p.inv[0] = new (p.inv[0].constructor)(id); p.inv[0].patternSeed = Math.random() * 6;
+      p.primary = id; p.inv[0] = new (p.inv[0].constructor)(id); p.inv[0].patternSeed = this.random() * 6;
       p.scoped = 0; p.scopeReady = false; p.reScope = 0; p.scopeT = 0;
       p.ads = 0; if (p.touch) p.touch.aim = false;
       p.slot = 0; p.readyAt = this.time + WEAPONS[id].draw; p.soldier.setWeapon(id);
@@ -416,7 +422,7 @@ export class Game {
     const d = ws.def;
     const eye = a.isPlayer ? a.shotOrigin(new THREE.Vector3()) : a.eye(new THREE.Vector3());
     const dir = a.forward(new THREE.Vector3());
-    jitterDir(dir, spread, Math.random);
+    jitterDir(dir, spread, this.random);
     let muzzle;
     if (a.isPlayer) {
       const cam = this.renderer.camera;
@@ -459,174 +465,61 @@ export class Game {
     }
   }
   traceBullet(shooter, o, dir, d) {
-    const range = d.range;
-    const hits = this.world.raycastAll(o.x, o.y, o.z, dir.x, dir.y, dir.z, range);
-    let power = d.pen, mul = 1, wall = false, from = 0;
-    this.frame++;
-    for (let i = 0; i <= hits.length; i++) {
-      const h = hits[i];
-      const lim = h ? h.t : range;
-      // 角色命中
-      let best = null, bestT = lim, part = null;
-      for (const a of this.actors) {
-        if (!a.alive || a === shooter || a.team === shooter.team) continue;
-        const r = a.soldier.hitTest(o, dir, bestT, this.frame);
-        if (r && r.t > from - 0.01 && r.t < bestT) { best = a; bestT = r.t; part = r.part; }
+    const result = traceShot(this, shooter, o, dir, d);
+    for (const impact of result.impacts) {
+      const { point, normal, surface } = impact;
+      if (surface === 'water') point.y = this.env.waterHeightAt(point.x, point.z, this.realTime || 0);
+      this.fx.impact(point, normal, surface, dir);
+      if (!impact.exit && (result.hit?.target && point === result.end || point.distanceTo(this.renderer.camera.position) < 55)) {
+        audio.playImpact(point, surface);
       }
-      if (best) {
-        const pt = o.clone().addScaledVector(dir, bestT);
-        const dist = bestT;
-        const partMul = part === 'head' ? d.headMul : part === 'arm' || part === 'leg' ? d.limbMul : 1;
-        const dmg = d.dmg * mul * Math.pow(d.falloff, dist / 10) * partMul;
-        const surface = best.armor > 0 && (part === 'head' || part === 'chest' || part === 'body') ? 'armor' : 'flesh';
-        this.fx.impact(pt, _v.copy(dir).negate(), surface, dir);
-        audio.playImpact(pt, surface);
-        this.damage(best, shooter, dmg, part, d.id, dir, wall);
-        return pt;
-      }
-      if (!h) break;
-      const pt = o.clone().addScaledVector(dir, h.t);
-      const n = new THREE.Vector3(h.nx, h.ny, h.nz);
-      const mat = h.collider.mat;
-      if (mat === 'water') pt.y = this.env.waterHeightAt(pt.x, pt.z, this.realTime || 0);
-      this.fx.impact(pt, n, mat, dir);
-      if (pt.distanceTo(this.renderer.camera.position) < 55) audio.playImpact(pt, mat);
-      if (h.collider.bullet === 'pen') {
-        const thick = h.exit - h.t;
-        const cost = thick * (mat === 'wood' ? 1.0 : 1.9);
-        if (power > cost) {
-          power -= cost; mul *= 0.6; wall = true; from = h.exit;
-          const ep = o.clone().addScaledVector(dir, h.exit);
-          this.fx.impact(ep, dir.clone(), mat, dir);
-          continue;
-        }
-      } else if (Math.random() < 0.08 && mat === 'metal') audio.playRicochet(pt);
-      return pt;
+      if (impact.ricochet && Math.random() < 0.08) audio.playRicochet(point);
     }
-    return o.clone().addScaledVector(dir, range);
+    if (result.hit) {
+      const { target, amount, part, wall } = result.hit;
+      this.damage(target, shooter, amount, part, d.id, dir, wall);
+    }
+    return result.end;
   }
+
   melee(a, heavy) {
-    const d = WEAPONS.knife;
-    const range = heavy ? d.rangeHeavy : d.rangeLight;
-    const eye = a.eye(new THREE.Vector3());
-    const base = a.forward(new THREE.Vector3());
     if (a.isPlayer) this.vm.melee(heavy);
-    this.frame++;
-    let hit = null;
-    for (const off of [0, 0.12, -0.12, 0.24, -0.24]) {
-      const dir = base.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), off);
-      for (const b of this.actors) {
-        if (!b.alive || b === a || b.team === a.team) continue;
-        const r = b.soldier.hitTest(eye, dir, range, this.frame);
-        if (r && (!hit || r.t < hit.t)) hit = { a: b, t: r.t, part: r.part, dir };
-      }
-      if (hit) break;
-    }
-    const delay = heavy ? 0.33 : 0.1;
-    this.timers.push({
-      t: this.time + delay, fn: () => {
-        if (!a.alive) return;
-        if (hit && hit.a.alive) {
-          const vf = hit.a.forward(new THREE.Vector3()); vf.y = 0; vf.normalize();
-          const back = vf.dot(_v.copy(hit.dir).setY(0).normalize()) > 0.5;
-          let dmg = heavy ? d.dmgHeavy : d.dmgLight;
-          if (back) dmg *= heavy ? 2 : 1.6;
-          if (hit.part === 'head') dmg *= 1.3;
-          const pt = eye.clone().addScaledVector(hit.dir, hit.t);
-          this.fx.impact(pt, hit.dir.clone().negate(), 'flesh', hit.dir);
-          audio.playKnife(heavy ? 'heavy' : 'light', 'flesh', a.isPlayer ? null : eye);
-          this.damage(hit.a, a, dmg, hit.part, 'knife', hit.dir, false, true);
-        } else {
-          const w = this.world.raycast(eye.x, eye.y, eye.z, base.x, base.y, base.z, range, 'bullet');
-          if (w) {
-            const pt = eye.clone().addScaledVector(base, w.t);
-            this.fx.impact(pt, new THREE.Vector3(w.nx, w.ny, w.nz), w.collider.mat, base);
-            audio.playKnife(heavy ? 'heavy' : 'light', 'wall', a.isPlayer ? null : eye);
-          } else audio.playKnife(heavy ? 'heavy' : 'light', 'miss', a.isPlayer ? null : eye);
-        }
-      },
-    });
+    combatActions.melee(this, a, heavy);
+  }
+  onMeleeImpact(a, heavy, point, dir) {
+    this.fx.impact(point, dir.clone().negate(), 'flesh', dir);
+    audio.playKnife(heavy ? 'heavy' : 'light', 'flesh', a.isPlayer ? null : point);
   }
   throwGrenade(a) {
-    const eye = a.eye(new THREE.Vector3());
-    const dir = a.forward(new THREE.Vector3());
-    const right = new THREE.Vector3(Math.cos(a.yaw), 0, -Math.sin(a.yaw));
-    const pos = eye.clone().addScaledVector(dir, 0.5).addScaledVector(right, 0.12);
-    const vel = dir.clone().multiplyScalar(16).add(new THREE.Vector3(0, 2.8, 0)).addScaledVector(a.vel, 0.6);
-    const mesh = buildGunMerged('he'); mesh.scale.setScalar(1.3);
-    mesh.position.copy(pos); this.renderer.scene.add(mesh);
-    this.nades.push({ mesh, pos, vel, fuse: WEAPONS.he.fuse, owner: a, spin: new THREE.Vector3(Math.random() * 10, Math.random() * 10, 0) });
+    this.nadeSeq ||= 0;
+    const n = combatActions.throwGrenade(this, a);
+    n.mesh = buildGunMerged('he'); n.mesh.scale.setScalar(1.3);
+    n.mesh.position.copy(n.pos); this.renderer.scene.add(n.mesh);
+    n.spin = new THREE.Vector3(Math.random() * 10, Math.random() * 10, 0);
     audio.playGrenadeThrow();
     if (a.isPlayer) audio.announce('Fire in the hole!');
-    for (const b of this.actors) if (b.hear && b.team !== a.team && b.pos.distanceTo(pos) < 20) b.hear(pos, false);
   }
-  updateNades(dt) {
-    const W = this.world;
-    this.nades = this.nades.filter((n) => {
-      n.fuse -= dt;
-      const steps = 3, h = dt / steps;
-      for (let s = 0; s < steps; s++) {
-        n.vel.y -= 14 * h;
-        const sp = n.vel.length();
-        if (sp < 1e-4) continue;
-        const d = n.vel.clone().divideScalar(sp);
-        const L = sp * h + 0.07;
-        const hit = W.raycast(n.pos.x, n.pos.y, n.pos.z, d.x, d.y, d.z, L, 'move');
-        if (hit) {
-          const nn = new THREE.Vector3(hit.nx, hit.ny, hit.nz);
-          n.pos.addScaledVector(d, Math.max(0, hit.t - 0.07));
-          const vn = n.vel.dot(nn);
-          n.vel.addScaledVector(nn, -1.45 * vn).multiplyScalar(0.55);
-          if (Math.abs(vn) > 2) audio.playGrenadeBounce(n.pos.clone());
-          if (nn.y > 0.7 && Math.abs(n.vel.y) < 1.2) { n.vel.y = 0; n.vel.x *= 0.8; n.vel.z *= 0.8; }
-          n.spin.multiplyScalar(0.6);
-        } else n.pos.addScaledVector(n.vel, h);
-      }
-      n.mesh.position.copy(n.pos);
-      n.mesh.rotation.x += n.spin.x * dt; n.mesh.rotation.y += n.spin.y * dt;
-      if (n.fuse <= 0) { this.explode(n.pos.clone(), n.owner); this.renderer.scene.remove(n.mesh); return false; }
-      return true;
-    });
+  onMeleeMiss(a, heavy, eye, base, range) {
+    const hit = this.world.raycast(eye.x, eye.y, eye.z, base.x, base.y, base.z, range, 'bullet');
+    if (hit) this.fx.impact(eye.clone().addScaledVector(base, hit.t), new THREE.Vector3(hit.nx, hit.ny, hit.nz), hit.collider.mat, base);
+    audio.playKnife(heavy ? 'heavy' : 'light', hit ? 'wall' : 'miss', a.isPlayer ? null : eye);
   }
+  updateNades(dt) { combatActions.updateNades(this, dt); }
+  onGrenadeMoved(n, dt) { n.mesh.position.copy(n.pos); n.mesh.rotation.x += n.spin.x * dt; n.mesh.rotation.y += n.spin.y * dt; }
+  onGrenadeBounce(n) { n.spin.multiplyScalar(0.6); audio.playGrenadeBounce(n.pos.clone()); }
+  onGrenadeRemoved(n) { this.renderer.scene.remove(n.mesh); }
   explode(p, owner) {
-    const d = WEAPONS.he;
-    this.fx.explosion(p);
-    audio.playExplosion(p);
+    this.fx.explosion(p); audio.playExplosion(p);
     const camD = this.renderer.camera.position.distanceTo(p);
     this.fx.shake = Math.max(this.fx.shake, Math.max(0, 1.4 - camD / 18));
-    for (const a of this.actors) {
-      if (!a.alive) continue;
-      if (a.team === owner.team && a !== owner) continue;
-      const c = a.soldier.chestWorld(new THREE.Vector3());
-      const dist = c.distanceTo(p);
-      if (dist > d.radius) continue;
-      const dir = c.clone().sub(p); const L = dir.length(); dir.divideScalar(L || 1);
-      const blocked = this.world.raycast(p.x, p.y + 0.2, p.z, dir.x, dir.y, dir.z, Math.max(0, L - 0.3), 'bullet');
-      let dmg = d.dmg * Math.pow(1 - dist / d.radius, 1.1);
-      if (blocked) dmg *= 0.2;
-      if (dmg > 1) this.damage(a, owner, dmg, 'chest', 'he', dir, false);
-    }
-    for (const b of this.actors) if (b.hear && b.pos.distanceTo(p) < 40) b.hear(p, true);
+    combatActions.explode(this, p, owner);
   }
   damage(v, att, amt, part, wid, dir, wall, melee) {
-    if (!v.alive || v.protectT > 0) return;
-    if (att && att !== v && att.team === v.team) return;
-    const def = WEAPONS[wid];
-    let hpD = amt;
-    if (v.armor > 0 && part !== 'leg') {
-      const ap = def?.armorPen ?? 0.75;
-      hpD = amt * ap;
-      v.armor = Math.max(0, v.armor - amt * (1 - ap) * 1.4);
-    }
-    v.hp -= hpD;
-    v.soldier.flinch(dir, part, hpD);
-    v.lastAttacker = att; v.lastHurt = this.time;
-    const killed = v.hp <= 0;
-    if (att && att !== v) att.stats.hits++;
+    const result = applyDamageState(this, v, att, amt, part, wid, dir);
+    if (!result) return;
+    const { hpDamage: hpD, killed } = result;
     if (v.isPlayer) {
       if (att && att !== v) this.hud.damageFrom(Math.atan2(-(att.pos.x - v.pos.x), -(att.pos.z - v.pos.z)));
-      v.aimPunch += Math.min(0.05, hpD * 0.0012);
-      v.damageResponse.hit(hpD, dir, v.yaw, part === 'head');
       if (!killed) audio.playHurt(Math.min(100, hpD));
       this.dmgFlash = Math.min(1.2, (this.dmgFlash || 0) + hpD / 45);
       audio.setLowHealth(lowHealthAmount(v.hp, !killed));
@@ -638,17 +531,9 @@ export class Game {
     if (killed) this.kill(v, att, wid, part === 'head' && !melee, wall, dir);
   }
   kill(v, att, wid, hs, wall, dir) {
-    v.alive = false; v.hp = 0; v.deadT = 0; v.respawnT = 4.0; v.stats.d++;
-    v.scoped = 0; v.ads = 0;
-    v.soldier.die(dir.x, dir.z, hs);
+    applyDeathState(this, v, att, hs, dir);
     audio.playDeath(v.isPlayer ? null : v.soldier.chestWorld(new THREE.Vector3()));
     const p = this.player;
-    if (att && att !== v) {
-      att.stats.k++; if (hs) att.stats.hs++;
-      if (this.mode !== 'relay') this.score[att.team]++;
-      att.multi = this.time - att.lastKillT < 5 ? att.multi + 1 : 1;
-      att.lastKillT = this.time; att.streak++;
-    }
     this.hud.killFeed(att && att !== v ? att : null, v, wid, hs, wall, att === p || v === p);
     if (att === p && v !== p) {
       const m = Math.min(att.multi, 8);

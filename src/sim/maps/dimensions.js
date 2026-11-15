@@ -1,0 +1,9 @@
+export const CH = 2.59,
+  CW = 2.44,
+  L20 = 6.06,
+  L40 = 12.19;
+export const SEA_Y = -7.5;
+export const DECK_HALF_Z = 9.4;
+export const H2 = 2.6;
+export const MAP_BOUNDS = Object.freeze({ minX: -37, maxX: 37, minZ: -18.3, maxZ: 18.3 });
+export const NAV_BOUNDS = Object.freeze({ x0: -36.2, z0: -17.9, x1: 36.2, z1: 17.9 });
