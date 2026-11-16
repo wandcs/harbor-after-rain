@@ -1,8 +1,8 @@
 # 发布与运行约定
 
-版本：1.3。更新：2026-11-16。发布规则自后续开发起使用。
+版本：1.4。更新：2026-11-16。发布规则自后续开发起使用。
 
-当前 S4 软件与 S5 本地验证已完成（见[S5 记录](s5-test-results.md)）。[独立运行交付包与完整构建清单](release-package-results.md)及[本地启停、重启和回退演练](local-runtime-results.md)已完成对应本地验证；目标服务器、实机体验、正式干净来源构建和目标环境运行演练仍待验。本次未部署，也未将这些准备工作视为 S6 整体验收通过。生命周期与版本规则见[开发约定](development-guide.md)，技术边界见[联网技术方案](online-technical-design.md)。
+当前 S4 软件与 S5 本地验证已完成（见[S5 记录](s5-test-results.md)）。[独立运行交付包与完整构建清单](release-package-results.md)、[本地启停、重启和回退演练](local-runtime-results.md)，以及[干净提交的正式来源包正向验证](release-package-results.md#2026-11-16干净提交的正式来源包正向验证)已完成对应本地验证；目标服务器、实机体验和目标环境运行演练仍待验。本次未部署，也未将这些准备工作视为 S6 整体验收通过。生命周期与版本规则见[开发约定](development-guide.md)，技术边界见[联网技术方案](online-technical-design.md)。
 
 ## 1. 发布单位与授权
 
