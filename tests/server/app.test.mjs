@@ -471,7 +471,9 @@ test(
       await rate.closed();
       await progress();
       const malformed = await peer(service, url);
-      malformed.socket.send('{"password":"private-wire-secret","tail":}');
+      // V8 includes this entire invalid token in its parse error; raw errors
+      // must not cross the logging boundary even when the wire is malformed.
+      malformed.socket.send('private-wire-secret');
       await malformed.closed();
       await progress();
       const blocked = await peer(service, url);
