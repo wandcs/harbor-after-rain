@@ -5,7 +5,7 @@ import { World, NavGrid } from './physics.js';
 import { createShipLayout, SEA_Y } from './maps/ship-layout.js';
 import { createRandom } from './random.js';
 import { HumanActor } from './human-actor.js';
-import { Bot } from './bots.js';
+import { Bot, BOT_NAMES } from './bots.js';
 import { prepareShot } from './shot.js';
 import { traceShot } from './ballistics.js';
 import { applyDamageState, applyDeathState } from './damage.js';
@@ -24,6 +24,13 @@ export class CombatMatch {
     onEvent = () => {},
   } = {}) {
     this.random = createRandom(seed);
+    // Naming has its own seeded stream so it cannot change combat outcomes.
+    const nameRandom = createRandom(seed ^ 0x4e414d45);
+    this.botNames = [...BOT_NAMES];
+    for (let i = this.botNames.length - 1; i > 0; i--) {
+      const j = Math.floor(nameRandom() * (i + 1));
+      [this.botNames[i], this.botNames[j]] = [this.botNames[j], this.botNames[i]];
+    }
     this.time = 0;
     this.tick = 0;
     this.frame = 0;
@@ -74,7 +81,12 @@ export class CombatMatch {
     const actor = new Type(this, {
       id,
       team,
-      name: name || `机器人 ${id}`,
+      name:
+        name ||
+        (controlType === 'bot'
+          ? this.botNames.find((candidate) => !this.actors.some((a) => a.name === candidate)) ||
+            `机器人 ${id}`
+          : '玩家'),
       diff: MATCH_RULES.botDifficulty,
     });
     actor.ruleRandom = createRandom((id * 2654435761) >>> 0);
@@ -180,10 +192,11 @@ export class CombatMatch {
         mode: this.mode,
         score: { ...this.score },
         winner,
-        actors: this.actors.map(({ id, name, team, stats }) => ({
+        actors: this.actors.map(({ id, name, team, controlType, stats }) => ({
           id,
           name,
           team,
+          controlType,
           stats: { ...stats },
         })),
       };
@@ -329,7 +342,14 @@ export class CombatMatch {
         wall,
         weaponId,
         headshot: part === 'head' && weaponId !== 'knife',
-        attacker: attacker ? { id: attacker.id, name: attacker.name, team: attacker.team } : null,
+        attacker: attacker
+          ? {
+              id: attacker.id,
+              name: attacker.name,
+              team: attacker.team,
+              controlType: attacker.controlType,
+            }
+          : null,
       });
       if (this.mode !== 'relay' && (this.score.BL >= this.goal || this.score.GR >= this.goal))
         this.end('score');

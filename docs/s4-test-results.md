@@ -107,3 +107,53 @@ node scripts/s2-launch-check.mjs --out=artifacts/shared-rules/new-launch
 ```
 
 证据：[本轮目录](../artifacts/shared-rules/20261115/)、[归档](../artifacts/shared-rules-evidence-20261115.zip)及同名 `.sha256`；包含事前覆盖设计、原始失败、前后源码和产物、全部检查结果与截图。
+
+## 2026-11-16：开局布局与角色命名修复
+
+用户确认按方案实施；覆盖设计见 [S4 测试方案](s4-test-plan.md#2026-11-16布局与命名修复的覆盖补强)。对照改造前 1.4.9、当前离线页与联机页，确认联机构建额外注入的单列样式导致卡片变宽；机器人昵称池仍在，但联机核心未使用。原版未发现统一身份图标；当前联机默认自动昵称已经存在，本次完善空白输入处理。
+
+实现：移除联机强制单列，复用原响应式规则。权威核心从原昵称池分配机器人名字，避免与在场角色重名，复活保持原名；独立的命名随机序列不消耗战斗随机源。共用显示函数按 `controlType` 添加 🤖 / 👤 前缀，并在 HTML 位置转义完整标签；头顶标签限制绘制宽度。结算、击杀事件及离场手雷的轻量归属保留控制类型。联机玩家可修改默认昵称，空白时恢复页面默认昵称并回填输入框，返回列表继续保留当前输入。
+
+| 实际检查 | 结果 | 证据目录或文件 |
+| --- | --- | --- |
+| 修复前复现 | `S4-R1` 在昵称池断言失败；`S4-I1` 在桌面双列断言失败 | `before-server-desktop/`、`before-browser/` |
+| 必要用例独立选择 | `S4-R1`、`S4-R2`、`S4-M1` 各 1 项通过，0 失败 | `independent-R1/`、`independent-R2/`、`independent-M1/` |
+| 累计回归 | 199 项通过，0 失败、取消或跳过；永久用例数不变 | `regression/summary.json`、`regression/events.jsonl` |
+| 工程检查与构建 | `npm run check`、`npm run build` 通过；103 个格式/静态规则文件、101 个运行模块 | `verification.json`、`release.json` |
+| `S4-I1` 原双玩法 | 1280×800 桌面及 844×390 横屏双列且无横向溢出；默认、空白及手动特殊字符昵称正常；计分板、击杀提示、结算和 MVP 身份显示通过；页面错误 0 | `online/summary.json` 与各玩法截图 |
+| 原离线菜单用例 | 桌面双列且按钮在视口内、横屏触屏两玩法、规则迁移、结算及单文件入口通过，页面错误 0 | `menu/menu-match-check.json` |
+| 原单文件操作用例 | 实际移动、射击、换弹、暂停恢复和两玩法重开通过；外部 HTTP 请求、WebSocket、页面错误均为 0 | `offline/report.json` |
+
+环境：Windows、Node.js 24.18.0、npm 11.18.0、Chrome 157.0.8103.78。协议仍为 9；结算和低频 JSON 事件补充既有控制类型，不改变紧凑快照编码。构建为 `7781573b483a12370835b8b88194bcac905ff799c8552c469097c787c5672cfc`，规则来源哈希为 `a3f9817bfe06627492dc42fa4b2a6bd72a7c7d9eb109eef0ccdbcd0b93d52b8d`；该哈希随共用核心源码变化，玩法数值、网络架构、生产参数及原通过线未调整。构建来源为 `9bd8526` 加本轮未提交修改，属于工作区构建，不是干净提交的正式来源包。
+
+首次在沙箱内执行服务器复现遇到本机端口连接 `EACCES`，记录保留在 `before-server/`；随后按桌面用户身份执行同一用例，才取得上述昵称缺陷证据。累计回归经 `npm test` 执行，原始输出目录归档到本轮 `regression/`。两玩法联机检查均清理至 clients=0、rooms=0、listening=false。
+
+复现命令从仓库根目录执行；Windows 浏览器及本机网络检查使用桌面用户身份，输出目录换成新目录：
+
+```powershell
+npm run build
+npm run check
+node scripts/run-tests.mjs --out=artifacts/layout-names-fix/new-regression
+node scripts/run-tests.mjs --file=tests/server/s4-rooms.test.mjs --case=S4-R1 --out=artifacts/layout-names-fix/new-R1
+node scripts/run-tests.mjs --file=tests/server/s4-rooms.test.mjs --case=S4-R2 --out=artifacts/layout-names-fix/new-R2
+node scripts/run-tests.mjs --file=tests/sim/s4-combat.test.mjs --case=S4-M1 --out=artifacts/layout-names-fix/new-M1
+node scripts/s4-browser-check.mjs --case=S4-I1 --out=artifacts/layout-names-fix/new-online
+$env:TEST_URL = 'file:///C:/repos/harbor-after-rain/dist/offline/harbor-after-rain.html'
+node scripts/menu-match-check.mjs --out artifacts/layout-names-fix/new-menu
+Remove-Item Env:TEST_URL
+node scripts/s1-browser-check.mjs --file dist/offline/harbor-after-rain.html --out artifacts/layout-names-fix/new-offline
+```
+
+原始证据：[本轮目录](../artifacts/layout-names-fix/20261116/)。实现与上述自动化验证完成，保留了修复前失败记录；未新增永久用例或追加性能实验。实现验证时未提交、推送或部署，随后按用户授权完成下述本机试玩更新。真实设备、目标服务器及 O4 未通过项继续保留，未进入 S6。
+
+## 2026-11-16：布局与命名修复的本机 WSL 部署
+
+用户授权更新现有 WSL 试玩服务。通过 Windows 回环访问复核，准备前及切换前的房间列表均为空；在独立目录解包、核对校验值、按锁文件安装唯一运行依赖并完成前后完整性校验后，切换用户级 systemd 服务。旧运行目录和匹配的 unit 配置均保留，准备失败不影响旧服务，启动失败的切换脚本会恢复旧配置。
+
+本轮使用 `build.kind=local` 的未提交工作区包，来源基线 `9bd8526`，构建仍为 `7781573b483a12370835b8b88194bcac905ff799c8552c469097c787c5672cfc`，与上面的自动化验证一致。ZIP SHA-256 为 `0dcb8b359cd55079ca72da70aa31835704e4f513f986aed83361a1b36055fe16`。Windows 地址为 `http://127.0.0.1:4173/`，仍只监听回环；60 Hz、2 房/32 连接准入配置及不启用自启动的设置保持。
+
+部署后 Windows Chrome 检查通过：健康身份、在线页面与离线文件哈希均匹配新清单；双列布局、默认昵称和两类身份前缀正常；两人建房加入、实际移动、开火、暂停恢复、退出后机器人补位及空大厅正常。移动距离约 1.76 米，开火计数由 0 增至 7；页面错误 0。服务 active/running、自动重启次数 0，部署后日志警告与异常断连均为 0。
+
+首次部署操作检查在射击断言超时，原始失败记录保留：检查脚本对自动步枪使用瞬间点击，而共用武器逻辑读取持续按住状态。改用既有离线操作用例的按住开火 650 毫秒动作后，完整链路通过；没有修改游戏代码或参数。两次检查的房间均正常释放，各有一条每局摘要，均为 2 人加入、2 人离开、异常断连 0。
+
+证据：[部署目录](../artifacts/layout-names-fix/20261116/deployment/)，包括完整包、校验值、切换前检查、前后 unit、浏览器两次记录、最终检查及本轮 journal。当前路径和启停、回退说明写入本机 `artifacts/wsl-preview/20261116/OPERATIONS.md`。截至部署核查时未提交或推送；后续源码同步以功能分支历史为准。本机试玩部署不构成公开发布、目标机或完整体验验收。

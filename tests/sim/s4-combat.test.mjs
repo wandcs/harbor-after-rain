@@ -58,6 +58,7 @@ test('S4-M1 full armory and detached grenades use shared authority actions', () 
   m.leave(a.id);
   assert.notEqual(nade.owner, a);
   assert.equal(nade.owner.id, ownerId);
+  assert.equal(nade.owner.controlType, 'human');
   assert.equal(nade.owner.game, undefined);
   // A thrown grenade remains live after departure; position is just the impact fixture.
   if (!b.alive) m.spawnActor(b);
@@ -72,6 +73,11 @@ test('S4-M1 full armory and detached grenades use shared authority actions', () 
   for (let i = 0; i < 190; i++) m.step(1 / 60, 1000 + i * 17);
   assert.equal(m.nades.length, 0);
   assert.ok(m.events.some((e) => e.type === 'death' && e.attackerId === ownerId));
+  assert.equal(
+    m.events.find((e) => e.type === 'death' && e.attackerId === ownerId).attacker.controlType,
+    'human',
+    'departed grenade owner retains its identity in the death event',
+  );
   assert.equal(m.score[nade.owner.team], beforeScore + 1);
   assert.ok(m.actors.every((actor) => actor.id !== ownerId));
   const current = m.actors.find((actor) => actor.controlType === 'human');

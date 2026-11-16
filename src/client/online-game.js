@@ -11,6 +11,7 @@ import { restoreActor } from '../sim/actor-state.js';
 import { OnlineSession } from '../net/session.js';
 import { Prediction } from '../net/prediction.js';
 import { collectInput } from './input/online-input.js';
+import { actorLabelHtml } from './ui/actor-name.js';
 
 /** S2 entry: reuses the existing renderer and controls, without starting the
  * offline simulation, local bots, damage, score or match timers. */
@@ -35,8 +36,8 @@ export class OnlineGame extends Game {
     identity.innerHTML =
       '<label class="lab" for="onlineName">你的昵称</label><input id="onlineName" maxlength="24"><label class="lab" for="createPassword">创建房间密码（可不填）</label><input id="createPassword" type="password" maxlength="32" autocomplete="new-password">';
     document.querySelector('.opts').prepend(identity);
-    document.querySelector('#onlineName').value =
-      '港区队员' + String(Math.floor(Math.random() * 9000) + 1000);
+    this.defaultName = '港区队员' + String(Math.floor(Math.random() * 9000) + 1000);
+    document.querySelector('#onlineName').value = this.defaultName;
     document.querySelector('#refreshRooms').onclick = () => {
       this.connectLobby();
       this.session?.send({ type: 'list' });
@@ -158,9 +159,11 @@ export class OnlineGame extends Game {
     audio.setVolumes({ master: this.opts.vol });
     audio.startAmbient();
     this.entering = true;
+    const nickname = document.querySelector('#onlineName');
+    nickname.value = nickname.value.trim() || this.defaultName;
     this.session.send({
       ...request,
-      name: document.querySelector('#onlineName').value.trim() || '玩家',
+      name: nickname.value,
       primary: this.opts.primary,
     });
   }
@@ -422,10 +425,7 @@ export class OnlineGame extends Game {
       if (attacker?.id === this.player?.id && victim !== this.player)
         audio.playKillConfirm(event.headshot, 1);
       if (victim === this.player) {
-        const safe = String(attacker?.name || '环境').replace(
-          /[&<>"']/g,
-          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-        );
+        const safe = attacker ? actorLabelHtml(attacker) : '环境';
         this.killedBy = `被 ${safe} 用 ${WEAPONS[event.weaponId]?.name || '武器'}击杀`;
       }
     }

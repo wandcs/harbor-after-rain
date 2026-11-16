@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { WebSocket } from 'ws';
 import { createApp } from '../../server/app.js';
 import { readConfig } from '../../server/config.js';
+import { BOT_NAMES } from '../../src/sim/bots.js';
 import {
   IDENTITY,
   INPUT_FLAGS,
@@ -86,6 +87,12 @@ test(
           'joined',
         );
         const room = app.rooms.get(joined.roomId);
+        const bots = room.match.actors.filter((actor) => actor.controlType === 'bot');
+        assert.ok(bots.every((actor) => BOT_NAMES.includes(actor.name)));
+        assert.equal(new Set(bots.map((actor) => actor.name)).size, bots.length);
+        const botName = bots[0].name;
+        room.match.spawnActor(bots[0]);
+        assert.equal(bots[0].name, botName, 'respawning keeps the actor nickname');
         const observer = await peer(address);
         const listed = await observer.request({ type: 'list' }, 'rooms');
         assert.deepEqual(
@@ -145,6 +152,7 @@ test(
         );
         assert.deepEqual([replacement.hp, replacement.stats.k, replacement.lifeId], [100, 0, 1]);
         assert.notEqual(replacement.id, original.id);
+        assert.ok(BOT_NAMES.includes(replacement.name));
         assert.equal(room.match.score[original.team], 12);
       } finally {
         await app.close();
@@ -236,6 +244,11 @@ test(
       assert.deepEqual(
         [result.result.winner, result.result.actors.length, result.result.reason],
         [null, 10, 'time'],
+      );
+      assert.deepEqual(
+        result.result.actors.map((actor) => actor.controlType),
+        result.result.actors.map((actor) => (actor.id === bj.actorId ? 'human' : 'bot')),
+        'settlement retains human/bot identity over the wire',
       );
       assert.equal(app.rooms.size, 0);
       assert.equal(br.history.samples.length, 0);

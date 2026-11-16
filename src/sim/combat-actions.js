@@ -67,6 +67,7 @@ export function detachGrenades(game, actor) {
         id: actor.id,
         team: actor.team,
         name: actor.name,
+        controlType: actor.controlType,
         pos: actor.pos.clone(),
         stats: { ...actor.stats },
         multi: actor.multi,

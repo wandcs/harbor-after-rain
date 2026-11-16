@@ -9,6 +9,7 @@ import { World, NavGrid } from './physics.js';
 import { Effects } from './effects.js';
 import { ViewModel } from './viewmodel.js';
 import { HUD, NAME_COLORS, nameClass } from './hud.js';
+import { actorLabel, actorLabelHtml } from './client/ui/actor-name.js';
 import { audio } from './audio.js';
 import { WEAPONS, jitterDir } from './weapons.js';
 import { buildGunMerged } from './guns.js';
@@ -233,8 +234,9 @@ export class Game {
     const c = document.createElement('canvas'); c.width = 256; c.height = 48;
     const x = c.getContext('2d');
     x.font = 'bold 30px "PingFang SC","Microsoft YaHei",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.lineWidth = 5; x.strokeStyle = 'rgba(0,0,0,.8)'; x.strokeText(b.name, 128, 24);
-    x.fillStyle = friendly ? NAME_COLORS.ally : NAME_COLORS.enemy; x.fillText(b.name, 128, 24);
+    const label = actorLabel(b);
+    x.lineWidth = 5; x.strokeStyle = 'rgba(0,0,0,.8)'; x.strokeText(label, 128, 24, 248);
+    x.fillStyle = friendly ? NAME_COLORS.ally : NAME_COLORS.enemy; x.fillText(label, 128, 24, 248);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: !friendly, depthWrite: false, transparent: true, opacity: 0.85, toneMapped: false }));
     s.scale.set(1.3, 0.244, 1); s.renderOrder = 20;
@@ -537,7 +539,7 @@ export class Game {
     this.hud.killFeed(att && att !== v ? att : null, v, wid, hs, wall, att === p || v === p);
     if (att === p && v !== p) {
       const m = Math.min(att.multi, 8);
-      let text, sub = `击杀 ${v.name}`;
+      let text, sub = `击杀 ${actorLabel(v)}`;
       if (m >= 2) { text = MULTI[m]; sub = MULTI_CN[m] + ' · ' + sub; setTimeout(() => audio.announce(MULTI[m].toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) + '!'), 150); }
       else if (hs) { text = 'HEADSHOT'; sub = '爆头 · ' + sub; setTimeout(() => audio.announce('Headshot!'), 150); }
       else if (wid === 'knife') { text = 'KNIFE KILL'; sub = '刀杀 · ' + sub; }
@@ -554,7 +556,7 @@ export class Game {
       this.vm.setVisible(false);
       audio.setLowHealth(false);
       const wn = WEAPONS[wid]?.name || wid;
-      this.killedBy = att && att !== v ? `被 <span class="${nameClass(att.team, p.team)}">${att.name}</span> 用 ${wn}${hs ? ' <span style="color:#ff5040">爆头</span>' : ''}击杀` : '你阵亡了';
+      this.killedBy = att && att !== v ? `被 <span class="${nameClass(att.team, p.team)}">${actorLabelHtml(att)}</span> 用 ${wn}${hs ? ' <span style="color:#ff5040">爆头</span>' : ''}击杀` : '你阵亡了';
     }
     this.fx.bloodSplat(v.pos);
     if (this.mode !== 'relay' && (this.score.BL >= this.goal || this.score.GR >= this.goal)) {
@@ -765,7 +767,7 @@ export class Game {
       }
       this.aimTarget = best;
     }
-    if (this.aimTarget && this.aimTarget.alive) { aimName = this.aimTarget.name; aimTeam = this.aimTarget.team; }
+    if (this.aimTarget && this.aimTarget.alive) { aimName = actorLabel(this.aimTarget); aimTeam = this.aimTarget.team; }
     this.hud.update(dt, {
       score: this.score, timeLeft: this.timeLeft, goal: this.goal, myTeam: p.team,
       hp: p.hp, armor: p.armor, alive: p.alive, weapon: w, scoped: p.scoped && w.def.type === 'sniper', ads: p.ads || 0, spreadPx,

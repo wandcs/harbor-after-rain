@@ -227,9 +227,7 @@ async function page(entry, online) {
     (await readFile('src/style.css', 'utf8')) +
     '\n' +
     (await readFile('src/lab/lab.css', 'utf8')) +
-    (online
-      ? '\n.online-sample .mode-grid{grid-template-columns:1fr}.online-sample #modeHint{display:none}'
-      : '');
+    (online ? '\n.online-sample #modeHint{display:none}' : '');
   const license = await readFile('node_modules/three/LICENSE', 'utf8');
   const compressionLicense = online
     ? '\nfflate license\n' + (await readFile('node_modules/fflate/LICENSE', 'utf8'))

@@ -80,11 +80,34 @@ for (const mode of args.mode ? [args.mode] : ['tdm', 'relay']) {
           assert.equal(prefs.primary, 'm4a1');
           assert.equal(prefs.size, 4);
         }
+        const layout = async () => {
+          const a = await one.locator('#btnStartTdm').boundingBox();
+          const b = await one.locator('#btnStartRelay').boundingBox();
+          return {
+            sideBySide: a.x + a.width <= b.x && Math.abs(a.y - b.y) < 3,
+            noOverflow: await one.evaluate(
+              () => document.documentElement.scrollWidth <= window.innerWidth,
+            ),
+          };
+        };
+        report.layout = { desktop: await layout() };
+        assert.ok(report.layout.desktop.sideBySide && report.layout.desktop.noOverflow);
+        await one.setViewportSize({ width: 844, height: 390 });
+        report.layout.landscape = await layout();
+        assert.ok(report.layout.landscape.sideBySide && report.layout.landscape.noOverflow);
+        await one.setViewportSize({ width: 1280, height: 800 });
+        report.defaultName = await one.locator('#onlineName').inputValue();
+        assert.match(report.defaultName, /^港区队员\d{4}$/);
+        await one.locator('#onlineName').fill('   ');
+        const manualName = '<队员&"测试>';
+        await two.locator('#onlineName').fill(manualName);
         await one.screenshot({ path: resolve(directory, 'lobby.png') });
         await one.locator('#createPassword').fill('deck');
         await one.locator(mode === 'tdm' ? '#btnStartTdm' : '#btnStartRelay').click();
         await one.waitForFunction(() => window.__game.player?.alive);
         const room = app.room;
+        assert.equal(await one.evaluate(() => window.__game.player.name), report.defaultName);
+        assert.equal(await one.locator('#onlineName').inputValue(), report.defaultName);
         assert.equal(room.match.mode, mode);
         assert.equal(room.match.goal, 50);
         assert.equal(await one.evaluate(() => window.__game.goal), 50);
@@ -98,6 +121,34 @@ for (const mode of args.mode ? [args.mode] : ['tdm', 'relay']) {
         await two.locator('[data-room-id]').first().click();
         await two.waitForFunction(() => window.__game.player?.alive);
         assert.equal(room.connections.size, 2);
+        await one.waitForFunction(
+          (name) => window.__game.actors.some((actor) => actor.name === name),
+          manualName,
+        );
+        assert.equal(await two.evaluate(() => window.__game.player.name), manualName);
+        report.names = await one.evaluate(() => {
+          const g = window.__game;
+          g.hud.scoreboard(true, g.actors, g.player.id, g.score);
+          const cells = [...document.querySelectorAll('#boardBody tr td:first-child')];
+          const expected = g.actors.map(
+            (a) => `${a.controlType === 'bot' ? '🤖' : '👤'} ${a.name}`,
+          );
+          const actual = cells.map((cell) => cell.textContent);
+          const bot = g.actors.find((a) => a.controlType === 'bot');
+          g.hud.killFeed(g.player, bot, 'm4a1', false, false, true);
+          const feed = document.querySelector('#feed .kf');
+          g.hud.scoreboard(false);
+          return {
+            expected,
+            actual,
+            markupInjected: cells.some((cell) => cell.children.length > 0),
+            feed: [feed.querySelector('.k').textContent, feed.querySelector('.v').textContent],
+            expectedFeed: [`👤 ${g.player.name}`, `🤖 ${bot.name}`],
+          };
+        });
+        assert.deepEqual([...report.names.actual].sort(), [...report.names.expected].sort());
+        assert.equal(report.names.markupInjected, false, 'nicknames remain escaped text');
+        assert.deepEqual(report.names.feed, report.names.expectedFeed);
         await one.bringToFront();
         if (await one.evaluate(() => window.__game.localInterrupted))
           await one.locator('#btnResume').click();
@@ -186,6 +237,20 @@ for (const mode of args.mode ? [args.mode] : ['tdm', 'relay']) {
           pages.map((p) => p.waitForFunction(() => window.__game.result?.reason === 'time')),
         );
         assert.equal(app.rooms.size, 0);
+        report.resultNames = await one.evaluate(() => ({
+          actual: [...document.querySelectorAll('#endTable tr td:first-child')].map(
+            (e) => e.textContent,
+          ),
+          expected: window.__game.result.actors.map(
+            (a) => `${a.controlType === 'bot' ? '🤖' : '👤'} ${a.name}`,
+          ),
+          mvp: document.querySelector('#endMvp span').textContent,
+        }));
+        assert.deepEqual(
+          [...report.resultNames.actual].sort(),
+          [...report.resultNames.expected].sort(),
+        );
+        assert.ok(report.resultNames.expected.includes(report.resultNames.mvp));
         await one.screenshot({ path: resolve(directory, 'result.png') });
         await one.locator('#btnMenu').click();
         await one.waitForFunction(

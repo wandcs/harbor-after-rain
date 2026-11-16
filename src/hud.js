@@ -1,6 +1,7 @@
 // HUD 与菜单（DOM）
 import { WEAPONS, PRIMARIES } from './weapons.js';
 import { MATCH_RULES } from './sim/match-rules.js';
+import { actorLabelHtml } from './client/ui/actor-name.js';
 
 const TEAM_CN = { BL: '潜伏者', GR: '保卫者' };
 const MATCH_TIME = `${Math.floor(MATCH_RULES.durationSeconds / 60)}:${String(MATCH_RULES.durationSeconds % 60).padStart(2, '0')}`;
@@ -240,7 +241,7 @@ export class HUD {
     d.className = 'kf' + (mine ? ' me' : '');
     const icon = this.icons[wid] ? `<img src="${this.icons[wid]}">` : `<span>[${WEAPONS[wid]?.name || wid}]</span>`;
     const myTeam = this.g.player?.team || this.opts.team;
-    d.innerHTML = (k ? `<span class="k ${nameClass(k.team, myTeam)}">${esc(k.name)}</span>` : '') + icon + (wb ? `<img class="hs" src="${WB_ICON}">` : '') + (hs ? `<img class="hs" src="${HS_ICON}">` : '') + `<span class="v ${nameClass(v.team, myTeam)}">${esc(v.name)}</span>`;
+    d.innerHTML = (k ? `<span class="k ${nameClass(k.team, myTeam)}">${actorLabelHtml(k)}</span>` : '') + icon + (wb ? `<img class="hs" src="${WB_ICON}">` : '') + (hs ? `<img class="hs" src="${HS_ICON}">` : '') + `<span class="v ${nameClass(v.team, myTeam)}">${actorLabelHtml(v)}</span>`;
     this.el.feed.prepend(d);
     this.feedItems.push({ el: d, t: performance.now() });
     while (this.feedItems.length > 6) { const f = this.feedItems.shift(); f.el.remove(); }
@@ -268,7 +269,7 @@ export class HUD {
     if (!show) return;
     const myTeam = actors.find(a => a.id === myId)?.team || this.opts.team;
     const rows = (team) => actors.filter((a) => a.team === team).sort((a, b) => b.stats.k - a.stats.k || a.stats.d - b.stats.d)
-      .map((a) => `<tr class="${a.id === myId ? 'me' : ''} ${a.alive ? '' : 'dead'}"><td class="${nameClass(a.team, myTeam)}">${esc(a.name)}</td><td>${a.stats.k}</td><td>${a.stats.d}</td><td>${a.stats.hs}</td><td>${a.alive ? '作战' : '重整'}</td></tr>`).join('');
+      .map((a) => `<tr class="${a.id === myId ? 'me' : ''} ${a.alive ? '' : 'dead'}"><td class="${nameClass(a.team, myTeam)}">${actorLabelHtml(a)}</td><td>${a.stats.k}</td><td>${a.stats.d}</td><td>${a.stats.hs}</td><td>${a.alive ? '作战' : '重整'}</td></tr>`).join('');
     const tbl = (team) => `<table class="t${team}"><tr><th class="team">${TEAM_CN[team]} · ${score[team]}</th><th>击杀</th><th>死亡</th><th>爆头</th><th>状态</th></tr>${rows(team)}</table>`;
     this.el.boardBody.innerHTML = `<div class="cols">${tbl('BL')}${tbl('GR')}</div>`;
   }
@@ -281,11 +282,11 @@ export class HUD {
     const mvp = [...actors].sort((a, b) => (b.stats.k * 2 - b.stats.d + b.stats.hs) - (a.stats.k * 2 - a.stats.d + a.stats.hs))[0];
     const me = actors.find((a) => a.id === myId);
     const myTeam = me?.team || this.opts.team;
-    this.el.endMvp.innerHTML = mvp ? `MVP：<span class="${nameClass(mvp.team, myTeam)}">${esc(mvp.name)}</span>（${mvp.stats.k} 杀 / ${mvp.stats.hs} 爆头）` : '';
+    this.el.endMvp.innerHTML = mvp ? `MVP：<span class="${nameClass(mvp.team, myTeam)}">${actorLabelHtml(mvp)}</span>（${mvp.stats.k} 杀 / ${mvp.stats.hs} 爆头）` : '';
     const acc = me && me.stats.shots ? ((me.stats.hits / me.stats.shots) * 100).toFixed(1) : '0';
     this.el.endMe.textContent = me ? `你的战绩：${me.stats.k} 击杀 · ${me.stats.d} 死亡 · ${me.stats.hs} 爆头 · 命中率 ${acc}%` : '';
     const rows = (team) => actors.filter((a) => a.team === team).sort((a, b) => b.stats.k - a.stats.k)
-      .map((a) => `<tr class="${a.id === myId ? 'me' : ''}"><td class="${nameClass(a.team, myTeam)}">${esc(a.name)}</td><td>${a.stats.k}</td><td>${a.stats.d}</td><td>${a.stats.hs}</td></tr>`).join('');
+      .map((a) => `<tr class="${a.id === myId ? 'me' : ''}"><td class="${nameClass(a.team, myTeam)}">${actorLabelHtml(a)}</td><td>${a.stats.k}</td><td>${a.stats.d}</td><td>${a.stats.hs}</td></tr>`).join('');
     const tbl = (team) => `<table class="t${team}"><tr><th class="team">${TEAM_CN[team]}</th><th>击杀</th><th>死亡</th><th>爆头</th></tr>${rows(team)}</table>`;
     this.el.endTable.innerHTML = `<div class="cols">${tbl('BL')}${tbl('GR')}</div>`;
   }
@@ -396,7 +397,6 @@ export class HUD {
   }
 }
 
-function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 const PRIM_CARDS = PRIMARIES.map((id) => {
   const d = WEAPONS[id];
