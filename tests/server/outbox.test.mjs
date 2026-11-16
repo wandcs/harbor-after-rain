@@ -122,6 +122,7 @@ test('one slow peer replaces complete paired snapshots, preserves important orde
     now = blockedAt + config.maxBacklogMs + 1;
     slow.outbox.flush();
     assert.equal(slow.socket.terminated, 1);
+    assert.equal(slow.outbox.failureReason, 'SEND_BACKLOG_TIMEOUT');
     assert.equal(fast.socket.readyState, 1);
     assert.equal(room.match.phase, 'running');
     room.leave(slow);
@@ -213,6 +214,10 @@ test('important queue count and byte bounds disconnect only its owning socket', 
     box.add('a');
     box.add('b');
     assert.equal(terminated, true);
+    assert.equal(
+      box.failureReason,
+      config.maxQueueBytes === 1 ? 'IMPORTANT_QUEUE_BYTES_LIMIT' : 'IMPORTANT_QUEUE_COUNT_LIMIT',
+    );
     assert.ok(box.important.length <= 1);
   }
 });

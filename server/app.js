@@ -16,8 +16,13 @@ import { Outbox } from './transport/outbox.js';
 import { SampleRoom } from './rooms/sample-room.js';
 import { MATCH_RULES } from '../src/sim/match-rules.js';
 
+const logCode = (value, fallback) =>
+  typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(value) ? value : fallback;
+
 /** Creates no listener or timer until start(). Every resource belongs to app;
- * close() is bounded and idempotent. now() is injectable monotonic milliseconds. */
+ * close() is bounded and idempotent. now() is injectable monotonic milliseconds.
+ * log receives sparse plain records, with no payload/name/password/address data;
+ * the host owns output, wall timestamps and retention. No per-tick logs. */
 export function createApp({
   config = readConfig(),
   identity = IDENTITY,
@@ -26,11 +31,13 @@ export function createApp({
   offlineFile = fileURLToPath(new URL('../dist/offline/harbor-after-rain.html', import.meta.url)),
   now = () => performance.now(),
   autoTick = true,
+  log = () => {},
 } = {}) {
   const publicProduct = product ? { name: product.name, version: product.version } : null;
   const clients = new Set();
   const rooms = new Map();
   let nextRoomId = 0,
+    nextConnectionId = 0,
     timer = null,
     closing = null,
     started = false,
@@ -54,7 +61,34 @@ export function createApp({
         passwordRequired: !!r.password,
       }));
   const sendList = (connection) => send(connection, { type: 'rooms', rooms: list() });
+  function summarize(room, endReason = room.match.result?.reason || 'server_shutdown') {
+    if (room.summaryLogged) return;
+    room.summaryLogged = true;
+    const { match, activity } = room,
+      completed = endReason === 'time' || endReason === 'score';
+    log({
+      level: 'info',
+      event: 'match_summary',
+      roomId: room.id,
+      mode: match.mode,
+      capacity: room.capacity,
+      snapshotHz: config.snapshotHz,
+      endReason,
+      completed,
+      wallDurationMs: Math.max(0, Math.round(now() - activity.createdAtMs)),
+      simulationMs: Math.round(match.time * 1000),
+      activeElapsedMs: Math.round(match.activeElapsedMs),
+      score: { ...match.score },
+      winner: completed ? match.result.winner : null,
+      humanJoins: activity.humanJoins,
+      peakHumans: activity.peakHumans,
+      humanLeaves: activity.humanLeaves,
+      abnormalDisconnects: activity.abnormalDisconnects,
+      humansAtEnd: room.connections.size,
+    });
+  }
   function removeRoom(room) {
+    summarize(room);
     rooms.delete(room.id);
     for (const c of room.connections.values()) {
       c.outbox.snapshot = null;
@@ -121,6 +155,8 @@ export function createApp({
   });
   wss.on('connection', (socket) => {
     const connection = {
+      id: ++nextConnectionId,
+      openedAtMs: now(),
       socket,
       ready: false,
       actorId: null,
@@ -135,7 +171,9 @@ export function createApp({
     };
     connection.outbox = new Outbox(socket, config, now);
     clients.add(connection);
-    socket.on('error', () => {});
+    socket.on('error', (error) => {
+      connection.socketErrorCode ??= logCode(error.code, 'SOCKET_ERROR');
+    });
     socket.on('pong', (payload) => {
       if (payload.length !== 4) return;
       const id = payload.readUInt32BE(),
@@ -147,8 +185,38 @@ export function createApp({
       connection.lastPongMs = received;
       connection.rttMs = Math.max(0, received - sent);
     });
-    socket.on('close', () => {
+    socket.on('close', (code) => {
       clients.delete(connection);
+      const reason =
+        connection.disconnectReason ||
+        connection.outbox.failureReason ||
+        (code === 1009 || connection.socketErrorCode === 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH'
+          ? 'PAYLOAD_TOO_LARGE'
+          : connection.socketErrorCode
+            ? 'SOCKET_ERROR'
+            : ![1000, 1001, 1005].includes(code)
+              ? 'ABNORMAL_CLOSE'
+              : null);
+      if (reason && !connection.expectedClose) {
+        const room = rooms.get(connection.roomId);
+        if (room) room.activity.abnormalDisconnects++;
+        log({
+          level: 'warn',
+          event: 'connection_abnormal_close',
+          connectionId: connection.id,
+          roomId: connection.roomId ?? null,
+          actorId: connection.actorId,
+          reason,
+          closeCode: code,
+          socketErrorCode: connection.socketErrorCode || null,
+          lifetimeMs: Math.max(0, Math.round(now() - connection.openedAtMs)),
+          lastPongAgeMs: Math.max(0, Math.round(now() - connection.lastPongMs)),
+          rttMs: Math.round(connection.rttMs),
+          queuedMessages: connection.outbox.important.length,
+          queuedBytes: connection.outbox.bytes,
+          bufferedBytes: socket.bufferedAmount,
+        });
+      }
       leave(connection);
       connection.outbox.clear();
       connection.pendingPings.clear();
@@ -167,6 +235,7 @@ export function createApp({
         if (error) throw new Error(error);
         if (message.type === 'hello') {
           if (!compatible(message.identity, identity)) {
+            connection.disconnectReason ??= 'VERSION_MISMATCH';
             send(connection, { type: 'error', code: 'VERSION_MISMATCH' });
             socket.close(1008, 'VERSION_MISMATCH');
             return;
@@ -262,6 +331,7 @@ export function createApp({
         if (message.type === 'resume') room.match.resume(connection.actorId, now());
         room.publish();
       } catch (error) {
+        connection.disconnectReason ??= logCode(error.message, 'INVALID_MESSAGE');
         send(connection, { type: 'error', code: error.message });
         socket.close(1008, error.message.slice(0, 100));
       }
@@ -284,6 +354,7 @@ export function createApp({
       for (const [id, sent] of connection.pendingPings)
         if (timeMs - sent > config.connectionTimeoutMs) connection.pendingPings.delete(id);
       if (timeMs - connection.lastPongMs > config.connectionTimeoutMs) {
+        connection.disconnectReason ??= 'HEARTBEAT_TIMEOUT';
         connection.socket.terminate();
         continue;
       }
@@ -332,9 +403,13 @@ export function createApp({
       closing ||= (async () => {
         started = false;
         clearInterval(timer);
-        for (const room of rooms.values()) room.close();
+        for (const room of rooms.values()) {
+          summarize(room);
+          room.close();
+        }
         rooms.clear();
         for (const client of clients) {
+          client.expectedClose = true;
           client.outbox.clear();
           client.pendingPings.clear();
           client.socket.terminate();

@@ -9,6 +9,8 @@ export class Outbox {
     this.bytes = 0;
     this.snapshot = null;
     this.blockedAt = null;
+    // Keep the first limit cause until the owning connection's close handler.
+    this.failureReason = null;
   }
   add(text) {
     const bytes = Buffer.byteLength(text);
@@ -16,6 +18,10 @@ export class Outbox {
       this.bytes + bytes > this.config.maxQueueBytes ||
       this.important.length >= this.config.maxQueueCount
     ) {
+      this.failureReason ??=
+        this.bytes + bytes > this.config.maxQueueBytes
+          ? 'IMPORTANT_QUEUE_BYTES_LIMIT'
+          : 'IMPORTANT_QUEUE_COUNT_LIMIT';
       this.socket.terminate();
       return false;
     }
@@ -32,7 +38,10 @@ export class Outbox {
     if (this.socket.readyState !== 1) return;
     if (this.socket.bufferedAmount > this.config.maxBufferedBytes) {
       this.blockedAt ??= this.now();
-      if (this.now() - this.blockedAt > this.config.maxBacklogMs) this.socket.terminate();
+      if (this.now() - this.blockedAt > this.config.maxBacklogMs) {
+        this.failureReason ??= 'SEND_BACKLOG_TIMEOUT';
+        this.socket.terminate();
+      }
       return;
     }
     this.blockedAt = null;

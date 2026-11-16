@@ -71,10 +71,12 @@ test(
   { timeout: 15000 },
   async () => {
     for (const teamSize of [4, 5, 8]) {
+      const logs = [];
       const app = createApp({
         config: readConfig({ PORT: '0' }),
         staticRoot: resolve('src'),
         autoTick: false,
+        log: (entry) => logs.push(entry),
       });
       try {
         const address = await app.start(),
@@ -149,6 +151,20 @@ test(
       }
       assert.equal(app.clients.size, 0);
       assert.equal(app.rooms.size, 0);
+      assert.equal(logs.length, 1, 'planned shutdown is one room summary, not client warnings');
+      assert.deepEqual(
+        [
+          logs[0].event,
+          logs[0].endReason,
+          logs[0].peakHumans,
+          logs[0].humanJoins,
+          logs[0].completed,
+        ],
+        ['match_summary', 'server_shutdown', teamSize * 2, teamSize * 2, false],
+      );
+      for (const secret of ['deck-secret', 'creator', 'racer'])
+        assert.equal(JSON.stringify(logs).includes(secret), false);
+      assert.ok(Buffer.byteLength(JSON.stringify(logs[0])) < 4096, 'summary size stays bounded');
     }
   },
 );
@@ -158,11 +174,13 @@ test(
   { timeout: 15000 },
   async () => {
     let time = 0;
+    const logs = [];
     const app = createApp({
       config: readConfig({ PORT: '0' }),
       staticRoot: resolve('src'),
       autoTick: false,
       now: () => time,
+      log: (entry) => logs.push(entry),
     });
     try {
       const address = await app.start(),
@@ -191,10 +209,26 @@ test(
       assert.equal(ar.connections.size, 1);
       const serverPeer = [...app.clients].find((p) => p.actorId === [...ar.connections.keys()][0]);
       const closed = once(serverPeer.socket, 'close');
-      c.socket.close();
+      c.socket.terminate();
       await closed;
       assert.equal(app.rooms.has(aj.roomId), false);
       assert.equal(ar.match.actors.length, 0);
+      const abandoned = logs.find((entry) => entry.event === 'match_summary');
+      assert.deepEqual(
+        [
+          abandoned.roomId,
+          abandoned.endReason,
+          abandoned.humanJoins,
+          abandoned.peakHumans,
+          abandoned.humanLeaves,
+          abandoned.abnormalDisconnects,
+        ],
+        [aj.roomId, 'empty', 2, 2, 2, 1],
+      );
+      assert.deepEqual(
+        [logs[0].event, logs[0].reason, logs[0].roomId, logs[0].actorId !== null],
+        ['connection_abnormal_close', 'ABNORMAL_CLOSE', aj.roomId, true],
+      );
       br.match.time = 180 - 1 / 60;
       time += 20;
       app.pulse(time);
@@ -206,6 +240,17 @@ test(
       assert.equal(app.rooms.size, 0);
       assert.equal(br.history.samples.length, 0);
       assert.equal(b.socket.readyState, 1);
+      const finished = logs.find((entry) => entry.roomId === bj.roomId);
+      assert.deepEqual(
+        [
+          finished.event,
+          finished.endReason,
+          finished.completed,
+          finished.score,
+          finished.simulationMs,
+        ],
+        ['match_summary', 'time', true, result.result.score, 180000],
+      );
       b.send({
         type: 'input',
         seq: 1,
@@ -241,9 +286,14 @@ test(
       assert.equal(firstSnapshot.public.roomId, repeated.roomId);
       assert.ok(roster.actors.some((actor) => actor.id === repeated.actorId));
       assert.equal(roster.version, firstSnapshot.public.rosterVersion);
+      assert.equal(logs.filter((entry) => entry.roomId === bj.roomId).length, 1);
     } finally {
       await app.close();
     }
     assert.equal(app.server.listening, false);
+    const summaries = logs.filter((entry) => entry.event === 'match_summary');
+    assert.equal(summaries.length, 4);
+    assert.equal(new Set(summaries.map((entry) => entry.roomId)).size, 4);
+    assert.equal(logs.filter((entry) => entry.event === 'connection_abnormal_close').length, 1);
   },
 );

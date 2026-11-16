@@ -196,8 +196,14 @@ test(
     await a.close();
     await a.close();
     let clock = 0;
+    const logs = [];
     const product = { name: 'harbor-after-rain', version: '1.4.9' };
-    const service = app({ now: () => clock, autoTick: false, product });
+    const service = app({
+      now: () => clock,
+      autoTick: false,
+      product,
+      log: (entry) => logs.push(entry),
+    });
     try {
       const address = await service.start(),
         url = `http://127.0.0.1:${address.port}`;
@@ -322,6 +328,18 @@ test(
       assert.equal(room.history.samples.length, 0);
       assert.equal(room.match.actors.length, 0);
       assert.equal(service.clients.size, 0);
+      assert.equal(logs.length, 1, 'normal leaves and closes emit only the room summary');
+      assert.deepEqual(
+        [
+          logs[0].event,
+          logs[0].endReason,
+          logs[0].humanJoins,
+          logs[0].peakHumans,
+          logs[0].humanLeaves,
+          logs[0].abnormalDisconnects,
+        ],
+        ['match_summary', 'empty', 3, 2, 3, 0],
+      );
       const heartbeat = await peer(service, url.replace('http:', 'ws:') + '/ws', {
         autoPong: false,
       });
@@ -358,10 +376,16 @@ test(
       }
       service.pulse((clock = heartbeatStart + 18000));
       assert.equal(connection.socket.readyState, 1, 'six-second boundary is preserved');
+      assert.equal(logs.length, 1, 'heartbeats and pulses do not emit routine logs');
       service.pulse((clock = heartbeatStart + 18001));
       await heartbeat.closed();
       assert.equal(connection.pendingPings.size, 0);
       assert.equal(service.clients.size, 0);
+      assert.equal(logs.length, 2);
+      assert.deepEqual(
+        [logs[1].event, logs[1].reason, logs[1].roomId, logs[1].lastPongAgeMs],
+        ['connection_abnormal_close', 'HEARTBEAT_TIMEOUT', null, 6001],
+      );
     } finally {
       await service.close();
       await service.close();
@@ -374,7 +398,8 @@ test(
   { timeout: 15000 },
   async () => {
     let clock = 0;
-    const service = app({ now: () => clock, autoTick: false });
+    const logs = [];
+    const service = app({ now: () => clock, autoTick: false, log: (entry) => logs.push(entry) });
     try {
       const address = await service.start(),
         url = `ws://127.0.0.1:${address.port}/ws`;
@@ -386,6 +411,7 @@ test(
       await healthy.next('snapshot');
       let seq = 0;
       const progress = async () => {
+        const logCount = logs.length;
         const actor = service.room.match.actors.find((value) => value.id === joined.actorId);
         healthy.send({
           type: 'input',
@@ -419,6 +445,7 @@ test(
         assert.equal(snapshot.own.actorId, joined.actorId);
         assert.equal(snapshot.public.snapshotSeq, snapshot.own.snapshotSeq);
         assert.equal(service.clients.size, 1);
+        assert.equal(logs.length, logCount, 'input, clock and snapshot progress is not logged');
       };
       const wrong = await peer(service, url);
       wrong.send({ type: 'hello', identity: { ...IDENTITY, rules: 'wrong' } });
@@ -443,11 +470,40 @@ test(
       assert.equal((await rate.next('error')).code, 'RATE_LIMIT');
       await rate.closed();
       await progress();
+      const malformed = await peer(service, url);
+      malformed.socket.send('{"password":"private-wire-secret","tail":}');
+      await malformed.closed();
+      await progress();
+      const blocked = await peer(service, url);
+      const serverBlocked = [...service.clients].at(-1);
+      serverBlocked.outbox.add('x'.repeat(readConfig({}).maxQueueBytes + 1));
+      await blocked.closed();
+      await progress();
+      assert.deepEqual(
+        logs.map((entry) => entry.reason),
+        [
+          'VERSION_MISMATCH',
+          'BAD_INPUT',
+          'PAYLOAD_TOO_LARGE',
+          'RATE_LIMIT',
+          'INVALID_MESSAGE',
+          'IMPORTANT_QUEUE_BYTES_LIMIT',
+        ],
+      );
+      assert.equal(new Set(logs.map((entry) => entry.connectionId)).size, 6);
+      assert.ok(
+        logs.every(
+          (entry) => entry.event === 'connection_abnormal_close' && entry.level === 'warn',
+        ),
+      );
+      assert.equal(JSON.stringify(logs).includes('private-wire-secret'), false);
       healthy.send({ type: 'leave' });
       await healthy.next('left');
       healthy.socket.close();
       await healthy.closed();
       assert.equal(service.room, null);
+      assert.equal(logs.length, 7);
+      assert.equal(logs.at(-1).event, 'match_summary');
     } finally {
       await service.close();
     }

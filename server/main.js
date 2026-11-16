@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { createApp } from './app.js';
 import { readConfig } from './config.js';
 import { IDENTITY } from '../src/protocol/messages.js';
@@ -21,12 +22,30 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const { name, version } = JSON.parse(
     readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
   );
+  const config = readConfig(),
+    runId = randomUUID();
   const app = createApp({
-    config: readConfig(),
+    config,
     identity,
     product: { name, version },
     staticRoot: fileURLToPath(new URL('online/', base)),
     offlineFile: fileURLToPath(new URL('offline/harbor-after-rain.html', base)),
+    log: (entry) => {
+      const line = JSON.stringify({
+        timestamp: new Date().toISOString(),
+        runId,
+        identity,
+        product: { name, version },
+        config: {
+          snapshotHz: config.snapshotHz,
+          maxRooms: config.maxRooms,
+          maxConnections: config.maxConnections,
+        },
+        ...entry,
+      });
+      if (entry.level === 'warn') console.warn(line);
+      else console.log(line);
+    },
   });
   const address = await app.start();
   console.log(`Online: http://${address.address}:${address.port}`);

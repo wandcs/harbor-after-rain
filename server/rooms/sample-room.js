@@ -19,6 +19,14 @@ export class SampleRoom {
     this.config = config;
     this.now = now;
     this.connections = new Map();
+    this.activity = {
+      createdAtMs: now(),
+      humanJoins: 0,
+      humanLeaves: 0,
+      peakHumans: 0,
+      abnormalDisconnects: 0,
+    };
+    this.summaryLogged = false;
     this.snapshotSeq = 0;
     this.history = new SnapshotHistory(config);
     this.lastStage = 1;
@@ -69,6 +77,8 @@ export class SampleRoom {
     this.resetBases(connection);
     connection.resyncs = 0;
     this.connections.set(actor.id, connection);
+    this.activity.humanJoins++;
+    this.activity.peakHumans = Math.max(this.activity.peakHumans, this.connections.size);
     connection.outbox.add(
       encodeMessage({
         type: 'joined',
@@ -85,6 +95,7 @@ export class SampleRoom {
   }
   leave(connection) {
     if (!this.connections.delete(connection.actorId)) return;
+    this.activity.humanLeaves++;
     this.match.leave(connection.actorId);
     connection.actorId = null;
     connection.roomId = null;

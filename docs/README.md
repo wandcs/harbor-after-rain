@@ -12,6 +12,7 @@
 | [开发约定](development-guide.md) | 工程边界、少量高覆盖测试、独立运行与证据要求 |
 | [换机与开发续接指南](development-continuation.md) | 新电脑准备、LF 规则、O4 尝试与停止原因；旧参考源码和回退包不再是续接前置材料 |
 | [发布与运行约定](release-runbook.md) | 构建、清单、部署门槛及回退 |
+| [服务器运行日志](server-logging.md) | 每局一次摘要、异常断连分类、隐私边界与原用例补强 |
 | [包内运行说明](../packaging/RUNNING.md) | 解包、安装运行依赖、核验与启动 |
 | [GitHub 提交准备](github-handoff.md) | 本地整理范围、Fork 与分支、后续 PR 准备 |
 | [测试入口](../tests/README.md) | 分层选择、集成和诊断命令及环境依赖 |
